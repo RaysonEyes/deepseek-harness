@@ -6,6 +6,7 @@ import type {
   PluginInventorySettingsTabInjected,
   PluginInventorySettingsTabProps,
 } from '../src/client/PluginInventorySettingsTab.tsx'
+import type { PluginInventorySetEnabledRequest } from '@deepseek-ai/dsh-api-remotes/client'
 import { en, type PluginInventoryLocaleKey } from '../src/client/locales.ts'
 
 afterEach(cleanup)
@@ -13,10 +14,14 @@ afterEach(cleanup)
 type Snapshot = Awaited<ReturnType<PluginInventorySettingsTabInjected['list']>>
 const t = ((key: PluginInventoryLocaleKey): string => en[key]) as PluginInventorySettingsTabProps['t']
 
-function props(list: PluginInventorySettingsTabInjected['list']): PluginInventorySettingsTabProps {
+function props(
+  list: PluginInventorySettingsTabInjected['list'],
+  setEnabled: PluginInventorySettingsTabInjected['setEnabled'] = async () => { throw new Error('unused') },
+): PluginInventorySettingsTabProps {
   return {
     t,
     list,
+    setEnabled,
   } as PluginInventorySettingsTabProps
 }
 
@@ -43,6 +48,7 @@ describe('PluginInventorySettingsTab', () => {
     expect(list).toHaveBeenCalledOnce()
     expect(screen.getByRole('searchbox', { name: en.search })).toBeTruthy()
     expect(screen.getByRole('heading', { name: en.catalog })).toBeTruthy()
+    expect(screen.getByText(en.toggleHint)).toBeTruthy()
     expect(view.container.querySelector('[data-plugin-count]')?.textContent).toBe('7')
     expect(screen.getAllByRole('listitem')).toHaveLength(7)
     expect(screen.getAllByText(en.enabledTag)).toHaveLength(6)
@@ -76,6 +82,58 @@ describe('PluginInventorySettingsTab', () => {
     expect(screen.getAllByText(en.disabledTag)).toHaveLength(2)
     expect(screen.queryByText(en.cordis)).toBeNull()
     expect(screen.queryByText(en.unobserved)).toBeNull()
+  })
+
+  it('renders one enablement switch per togglable plugin', async () => {
+    render(<PluginInventorySettingsTab {...props(async () => SNAPSHOT)} />)
+    await screen.findByRole('searchbox', { name: en.search })
+    const switches = screen.getAllByRole('switch')
+    expect(switches).toHaveLength(7)
+    expect(switches[0]!.getAttribute('aria-checked')).toBe('true')
+    expect(switches[6]!.getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByRole('switch', { name: 'directory-picker-native, Enable' })).toBeTruthy()
+  })
+
+  it('skips the switch for the bootstrap include row', async () => {
+    const snapshot = {
+      entries: [
+        { entryId: 'include', moduleName: 'cordis:include', enabled: true, fiberPhase: 'active' },
+        { entryId: 'tool-x', moduleName: 'cordis:active', enabled: true, fiberPhase: 'active' },
+      ],
+    } as unknown as Snapshot
+    render(<PluginInventorySettingsTab {...props(async () => snapshot)} />)
+    await screen.findByRole('searchbox', { name: en.search })
+    expect(screen.getAllByRole('switch')).toHaveLength(1)
+  })
+
+  it('calls setEnabled with the desired state and shows the returned snapshot', async () => {
+    const setEnabled = vi.fn(async (request: PluginInventorySetEnabledRequest) => {
+      expect(request).toEqual({ entryId: 'disabled-entry', enabled: true })
+      return {
+        entries: SNAPSHOT.entries.map(entry =>
+          entry.entryId === 'disabled-entry' ? { ...entry, enabled: true } : entry),
+      } as unknown as Snapshot
+    })
+    render(<PluginInventorySettingsTab {...props(async () => SNAPSHOT, setEnabled)} />)
+    const toggle = await screen.findByRole('switch', { name: 'directory-picker-native, Enable' })
+    fireEvent.click(toggle)
+    await waitFor(() => { expect(setEnabled).toHaveBeenCalledOnce() })
+    await waitFor(() => {
+      expect(screen.getByRole('switch', { name: 'directory-picker-native, Disable' }).getAttribute('aria-checked')).toBe('true')
+    })
+    expect(screen.getAllByText(en.enabledTag)).toHaveLength(7)
+    expect(screen.queryByText(en.toggleError)).toBeNull()
+  })
+
+  it('reports a toggle failure without losing the current catalog', async () => {
+    const setEnabled = vi.fn(async () => { throw new Error('entry-not-found') })
+    render(<PluginInventorySettingsTab {...props(async () => SNAPSHOT, setEnabled)} />)
+    const toggle = await screen.findByRole('switch', { name: 'directory-picker-native, Enable' })
+    fireEvent.click(toggle)
+    await waitFor(() => { expect(setEnabled).toHaveBeenCalledOnce() })
+    expect((await screen.findByRole('alert')).textContent).toBe(en.toggleError)
+    expect(screen.getAllByRole('listitem')).toHaveLength(7)
+    expect(screen.getByRole('switch', { name: 'directory-picker-native, Enable' })).toBeTruthy()
   })
 
   it('filters by module name or Loader entry id', async () => {

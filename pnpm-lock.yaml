@@ -4912,6 +4912,9 @@ importers:
 
   packages/host/plugin-inventory:
     dependencies:
+      js-yaml:
+        specifier: ^4.1.0
+        version: 4.2.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -4919,6 +4922,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
+      '@deepseek-ai/cordis-plugin-include':
+        specifier: workspace:^
+        version: link:../../../vendor/include
       '@deepseek-ai/cordis-plugin-loader':
         specifier: workspace:^
         version: link:../../../vendor/loader

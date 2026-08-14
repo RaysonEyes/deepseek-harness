@@ -8,6 +8,7 @@ import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, inject, NS } from '../src/client/index.ts'
 import { PluginInventorySettingsTab } from '../src/client/PluginInventorySettingsTab.tsx'
+import type { PluginEntryId } from '@deepseek-ai/dsh-api-remotes/client'
 import type { PluginInventorySettingsTabInjected } from '../src/client/PluginInventorySettingsTab.tsx'
 
 usePinnedBrowserLanguages('zh-CN')
@@ -16,6 +17,12 @@ afterEach(cleanup)
 const EMPTY = { entries: [] }
 type ListResult =
   | { readonly ok: true; readonly value: typeof EMPTY }
+  | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
+type SetEnabledValue =
+  | { readonly ok: true; readonly value: typeof EMPTY }
+  | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
+type SetEnabledResult =
+  | { readonly ok: true; readonly value: SetEnabledValue }
   | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
 
 async function bench() {
@@ -31,8 +38,10 @@ async function bench() {
   new RemoteService(ctx)
   const list = vi.fn<() => Promise<ListResult>>()
     .mockResolvedValue({ ok: true, value: EMPTY })
-  ctx.provide('remote.pluginInventory', { list })
-  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, list }
+  const setEnabled = vi.fn<() => Promise<SetEnabledResult>>()
+    .mockResolvedValue({ ok: true, value: { ok: true, value: EMPTY } })
+  ctx.provide('remote.pluginInventory', { list, setEnabled })
+  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, list, setEnabled }
 }
 
 function declare(slots: SlotRegistry): () => void {
@@ -64,6 +73,15 @@ describe('ui-settings-plugin-inventory browser plugin', () => {
     expect(b.list).toHaveBeenCalledOnce()
     b.list.mockResolvedValueOnce({ ok: false, error: { code: 'REMOTE_ERROR', message: 'unavailable' } })
     await expect(injected.list()).rejects.toThrow('pluginInventory.list failed: REMOTE_ERROR: unavailable')
+
+    await expect(injected.setEnabled({ entryId: 'tool-x' as PluginEntryId, enabled: false })).resolves.toEqual(EMPTY)
+    expect(b.setEnabled).toHaveBeenCalledWith({ entryId: 'tool-x', enabled: false })
+    b.setEnabled.mockResolvedValueOnce({ ok: true, value: { ok: false, error: { code: 'ENTRY_NOT_FOUND', message: 'ghost' } } })
+    await expect(injected.setEnabled({ entryId: 'ghost' as PluginEntryId, enabled: true }))
+      .rejects.toThrow('pluginInventory.setEnabled failed: ENTRY_NOT_FOUND')
+    b.setEnabled.mockResolvedValueOnce({ ok: false, error: { code: 'TRANSPORT', message: 'down' } })
+    await expect(injected.setEnabled({ entryId: 'ghost' as PluginEntryId, enabled: true }))
+      .rejects.toThrow('pluginInventory.setEnabled failed: TRANSPORT: down')
     await b.ctx.fiber.dispose()
   })
 

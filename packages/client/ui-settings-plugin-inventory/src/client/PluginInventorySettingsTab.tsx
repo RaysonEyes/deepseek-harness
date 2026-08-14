@@ -1,5 +1,8 @@
-import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
-import type { PluginInventorySnapshot } from '@deepseek-ai/dsh-api-remotes/client'
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import type {
+  PluginInventorySetEnabledRequest,
+  PluginInventorySnapshot,
+} from '@deepseek-ai/dsh-api-remotes/client'
 import {
   IconChevronDownOutline14,
   IconSearchOutline16,
@@ -12,10 +15,13 @@ import css from './PluginInventorySettingsTab.module.css'
 export interface PluginInventorySettingsTabInjected {
   /** Read a current Host inventory snapshot. */
   list: () => Promise<PluginInventorySnapshot>
+  /** Flip one entry's effective enablement; resolves to the fresh snapshot. */
+  setEnabled: (request: PluginInventorySetEnabledRequest) => Promise<PluginInventorySnapshot>
 }
 
 type PluginInventoryEntry = PluginInventorySnapshot['entries'][number]
 type PluginFiberPhase = PluginInventoryEntry['fiberPhase']
+type PluginEntryId = PluginInventoryEntry['entryId']
 
 /** Full component props assembled by the Settings slot renderer. */
 export type PluginInventorySettingsTabProps =
@@ -60,21 +66,33 @@ function matches(entry: PluginInventoryEntry, normalizedQuery: string): boolean 
     .some(value => value.toLocaleLowerCase().includes(normalizedQuery))
 }
 
-/** Render the read-only current Loader inventory. */
-export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsTabProps): ReactNode {
+/** The bootstrap include row is host app glue and cannot be toggled. */
+function isTogglable(entry: PluginInventoryEntry): boolean {
+  return entry.moduleName !== 'cordis:include'
+}
+
+/** Render the current Loader inventory with a per-row enablement switch. */
+export function PluginInventorySettingsTab({ list, setEnabled, t }: PluginInventorySettingsTabProps): ReactNode {
   const catalogId = useId()
+  const mounted = useRef(true)
   const [request, setRequest] = useState(0)
   const [query, setQuery] = useState('')
-  const [expanded, setExpanded] = useState<PluginInventoryEntry['entryId'] | null>(null)
+  const [expanded, setExpanded] = useState<PluginEntryId | null>(null)
+  const [toggling, setToggling] = useState<PluginEntryId | null>(null)
+  const [toggleError, setToggleError] = useState<string | null>(null)
   const [state, setState] = useState<ViewState>({ status: 'loading' })
 
   useEffect(() => {
+    mounted.current = true
     let current = true
     void Promise.resolve().then(() => list()).then(
       (snapshot) => { if (current) setState({ status: 'ready', snapshot }) },
       () => { if (current) setState({ status: 'error' }) },
     )
-    return () => { current = false }
+    return () => {
+      mounted.current = false
+      current = false
+    }
   }, [list, request])
 
   const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -96,6 +114,20 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
     setRequest(value => value + 1)
   }
 
+  const toggle = async (entry: PluginInventoryEntry): Promise<void> => {
+    if (toggling !== null) return
+    setToggling(entry.entryId)
+    setToggleError(null)
+    try {
+      const snapshot = await setEnabled({ entryId: entry.entryId, enabled: !entry.enabled })
+      if (mounted.current) setState({ status: 'ready', snapshot })
+    } catch {
+      if (mounted.current) setToggleError(t('toggleError'))
+    } finally {
+      if (mounted.current) setToggling(null)
+    }
+  }
+
   return (
     <div className={css.section} aria-busy={state.status === 'loading'}>
       {state.status === 'loading' ? <p className={css.status}>{t('loading')}</p> : null}
@@ -107,6 +139,8 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
       ) : null}
       {state.status === 'ready' ? (
         <div className={css.catalog}>
+          <p className={css.hint}>{t('toggleHint')}</p>
+          {toggleError !== null ? <p className={css.toggleFailure} role="alert">{toggleError}</p> : null}
           <label className={css.search}>
             <IconSearchOutline16 aria-hidden="true" />
             <span className={css.visuallyHidden}>{t('search')}</span>
@@ -133,41 +167,61 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
                 const title = moduleShortName(entry.moduleName)
                 const configuration = t(entry.enabled ? 'enabledTag' : 'disabledTag')
                 const open = expanded === entry.entryId
-                const detailId = `${catalogId}-details-${encodeURIComponent(entry.entryId)}`
+                const detailId = catalogId + '-details-' + encodeURIComponent(entry.entryId)
+                const togglable = isTogglable(entry)
+                const busy = toggling === entry.entryId
+                const toggleLabel = t(entry.enabled ? 'toggleDisable' : 'toggleEnable')
                 return (
                   <li
                     className={css.card}
                     key={entry.entryId}
                     data-plugin-entry={entry.entryId}
                     data-open={open ? 'true' : undefined}
+                    data-busy={busy ? 'true' : undefined}
                   >
-                    <button
-                      className={css.cardContent}
-                      type="button"
-                      aria-expanded={open}
-                      aria-controls={detailId}
-                      aria-label={entry.enabled ? `${title}, ${status}, ${configuration}` : `${title}, ${configuration}`}
-                      onClick={() => {
-                        setExpanded(current => current === entry.entryId ? null : entry.entryId)
-                      }}
-                    >
-                      <strong className={css.cardTitle} title={entry.moduleName}>{title}</strong>
-                      <span className={css.cardTrailing}>
-                        {entry.enabled ? (
-                          <span
-                            className={css.statusDot}
-                            data-phase={entry.fiberPhase ?? 'unobserved'}
-                            role="img"
-                            aria-label={status}
-                            title={status}
-                          />
-                        ) : null}
-                        <span className={css.configTag} data-enabled={entry.enabled ? 'true' : 'false'}>
-                          {configuration}
+                    <div className={css.cardHeader}>
+                      <button
+                        className={css.cardContent}
+                        type="button"
+                        aria-expanded={open}
+                        aria-controls={detailId}
+                        aria-label={entry.enabled ? title + ', ' + status + ', ' + configuration : title + ', ' + configuration}
+                        onClick={() => {
+                          setExpanded(current => current === entry.entryId ? null : entry.entryId)
+                        }}
+                      >
+                        <strong className={css.cardTitle} title={entry.moduleName}>{title}</strong>
+                        <span className={css.cardTrailing}>
+                          {entry.enabled ? (
+                            <span
+                              className={css.statusDot}
+                              data-phase={entry.fiberPhase ?? 'unobserved'}
+                              role="img"
+                              aria-label={status}
+                              title={status}
+                            />
+                          ) : null}
+                          <span className={css.configTag} data-enabled={entry.enabled ? 'true' : 'false'}>
+                            {configuration}
+                          </span>
+                          <IconChevronDownOutline14 className={css.chevron} size={12} aria-hidden="true" />
                         </span>
-                        <IconChevronDownOutline14 className={css.chevron} size={12} aria-hidden="true" />
-                      </span>
-                    </button>
+                      </button>
+                      {togglable ? (
+                        <button
+                          className={css.toggle}
+                          type="button"
+                          role="switch"
+                          aria-checked={entry.enabled}
+                          aria-label={title + ', ' + toggleLabel}
+                          disabled={busy || toggling !== null}
+                          title={toggleLabel}
+                          onClick={() => { void toggle(entry) }}
+                        >
+                          <span className={css.toggleTrack} aria-hidden="true" />
+                        </button>
+                      ) : null}
+                    </div>
                     {open ? (
                       <div className={css.cardDetails} id={detailId}>
                         <code className={css.entryValue} data-loader-entry>{entry.entryId}</code>

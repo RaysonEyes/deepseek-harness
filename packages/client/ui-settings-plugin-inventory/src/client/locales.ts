@@ -20,6 +20,11 @@ export const zh = {
   active: '已挂载',
   failed: '挂载失败',
   unloading: '卸载中',
+  toggleEnable: '启用',
+  toggleDisable: '停用',
+  toggleInFlight: '正在应用…',
+  toggleError: '切换失败,请重试。',
+  toggleHint: '宿主层开关影响所有会话。由 agent 预设按会话挂载的工具,如已在预设中启用,请勿在宿主层重复开启。',
 } satisfies Record<string, string>
 
 /** Plugin inventory locale key union. */
@@ -45,4 +50,9 @@ export const en = {
   active: 'Mounted',
   failed: 'Mount failed',
   unloading: 'Unloading',
+  toggleEnable: 'Enable',
+  toggleDisable: 'Disable',
+  toggleInFlight: 'Applying…',
+  toggleError: 'Failed to toggle. Please retry.',
+  toggleHint: 'Host-level switches affect every session. Tools mounted per-session by an agent preset should stay enabled in the preset, not re-enabled here.',
 } satisfies Record<PluginInventoryLocaleKey, string>

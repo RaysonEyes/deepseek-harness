@@ -34,7 +34,18 @@ export function apply(ctx: ClientContext): void {
     }
     return result.value
   }
-  const injected = (): PluginInventorySettingsTabInjected => ({ list })
+  const setEnabled: PluginInventorySettingsTabInjected['setEnabled'] = async (request) => {
+    const carried = await ctx.remote.pluginInventory.setEnabled(request)
+    if (!carried.ok) {
+      throw new Error(`pluginInventory.setEnabled failed: ${carried.error.code}: ${carried.error.message}`)
+    }
+    const result = carried.value
+    if (!result.ok) {
+      throw new Error(`pluginInventory.setEnabled failed: ${result.error.code}`)
+    }
+    return result.value
+  }
+  const injected = (): PluginInventorySettingsTabInjected => ({ list, setEnabled })
 
   ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
     name: 'settings.plugins.tab',
