@@ -17,6 +17,7 @@ import {
   hostCreateDirectoryValueSchema, hostDescribeValueSchema,
   hostListDirectoryValueSchema, hostOpenPathValueSchema, hostPickDirectoryValueSchema,
 } from '../api/host.schema.ts'
+import { gitDiffValueSchema, gitStatusValueSchema } from '../api/git.schema.ts'
 import {
   sessionCancelValueSchema,
   sessionAttachmentValueSchema,
@@ -105,6 +106,10 @@ export interface IApiClient {
     prompt(payload: RequestPayload<'subagent.prompt'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'subagent.prompt'>>>
     interrupt(payload: RequestPayload<'subagent.interrupt'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'subagent.interrupt'>>>
   }
+  git: {
+    status(payload: RequestPayload<'git.status'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'git.status'>>>
+    diff(payload: RequestPayload<'git.diff'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'git.diff'>>>
+  }
   host: {
     describe(payload: RequestPayload<'host.describe'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.describe'>>>
     pickDirectory(payload: RequestPayload<'host.pickDirectory'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.pickDirectory'>>>
@@ -186,6 +191,8 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'subagent.history': subagentHistoryValueSchema,
   'subagent.prompt': subagentPromptValueSchema,
   'subagent.interrupt': subagentInterruptValueSchema,
+  'git.status': gitStatusValueSchema,
+  'git.diff': gitDiffValueSchema,
   'host.describe': hostDescribeValueSchema,
   'host.pickDirectory': hostPickDirectoryValueSchema,
   'host.listDirectory': hostListDirectoryValueSchema,
@@ -429,6 +436,11 @@ export abstract class AbstractApiClient implements IApiClient {
     history: (payload, signal) => this.callUnary('subagent.history', payload, signal),
     prompt: (payload, signal) => this.callUnary('subagent.prompt', payload, signal),
     interrupt: (payload, signal) => this.callUnary('subagent.interrupt', payload, signal),
+  }
+
+  readonly git: IApiClient['git'] = {
+    status: (payload, signal) => this.callUnary('git.status', payload, signal),
+    diff: (payload, signal) => this.callUnary('git.diff', payload, signal),
   }
 
   readonly host: IApiClient['host'] = {

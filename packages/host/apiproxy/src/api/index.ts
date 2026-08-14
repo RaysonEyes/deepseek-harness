@@ -5,6 +5,7 @@
  */
 
 import type { SessionsApi } from './sessions.ts'
+import type { GitApi } from './git.ts'
 import type { HostApi } from './host.ts'
 import type { WorkspaceApi } from './workspace.ts'
 import type { AgentPresetsApi } from './agent-presets.ts'
@@ -31,6 +32,8 @@ export interface ApiProxy {
   settings: SettingsApi
   credentials: CredentialsApi
   llm: LlmApi
+  /** Read-only Git working-tree review (status + diffs). */
+  git: GitApi
   /** Host-only download surfaces (GET, no wire envelope); absent from IApiClient. */
   downloads: DownloadsApi
   /**
@@ -61,7 +64,15 @@ export type { GoalsApi, GoalId, GoalRef } from './goals.ts'
 export type { SettingsApi, SettingsNamespaceView, SettingsPathOpView, SettingsSecretView } from './settings.ts'
 export type { CredentialsApi, CredentialView } from './credentials.ts'
 export type { ConfigurableProviderView, DiscoveredModelView, LlmApi } from './llm.ts'
+export type { GitApi, GitReviewChange, GitReviewDiffValue, GitReviewStatusValue } from './git.ts'
 export type { DownloadsApi } from './downloads.ts'
+export {
+  gitDiffRequestSchema,
+  gitDiffValueSchema,
+  gitReviewChangeSchema,
+  gitStatusRequestSchema,
+  gitStatusValueSchema,
+} from './git.schema.ts'
 export type { ApprovalResponsePayload } from './approvals.ts'
 
 export type { QuestionResponsePayload } from './questions.ts'

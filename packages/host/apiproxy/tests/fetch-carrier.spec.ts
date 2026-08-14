@@ -294,6 +294,10 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
         return new Response('stub', { status: 404 })
       },
     },
+    git: {
+      status: () => Promise.resolve({ rpcId: RpcId('git'), result: { ok: false, error: { code: 'not-a-repo', message: 'stub', details: {} } } }),
+      diff: () => Promise.resolve({ rpcId: RpcId('git'), result: { ok: false, error: { code: 'not-a-repo', message: 'stub', details: {} } } }),
+    },
   }
 }
 

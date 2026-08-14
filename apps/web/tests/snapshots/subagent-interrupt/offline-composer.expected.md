@@ -8,6 +8,12 @@
   - button "Session log":
     - text: Session log
     - img
+  - group "Panels":
+    - button "Terminal"
+    - button "Browser"
+    - button "Review"
+    - button "Assistant"
+    - button "Files"
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"

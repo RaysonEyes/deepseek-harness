@@ -174,6 +174,11 @@ export class FakeApiClient implements IApiClient {
     interrupt: (payload: unknown) => this.record('subagent.interrupt', payload, this.onSubagentInterrupt(payload)),
   }
 
+  readonly git: IApiClient['git'] = {
+    status: () => Promise.resolve(ok({ repoRoot: '/fake', branch: 'main', changes: [] })),
+    diff: () => Promise.resolve(ok({ path: 'x', staged: false, untracked: false, diff: '', content: null })),
+  }
+
   readonly host: IApiClient['host'] = {
     describe: (payload: unknown) => this.record('host.describe', payload, this.onDescribe(payload)),
     pickDirectory: (payload: unknown) => this.record('host.pickDirectory', payload, this.onPickDirectory(payload)),

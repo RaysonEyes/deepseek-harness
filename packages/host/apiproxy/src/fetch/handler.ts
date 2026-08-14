@@ -34,6 +34,7 @@ import {
   hostListDirectoryRequestSchema, hostOpenPathRequestSchema,
   hostPickDirectoryRequestSchema,
 } from '../api/host.schema.ts'
+import { gitDiffRequestSchema, gitStatusRequestSchema } from '../api/git.schema.ts'
 import {
   workspaceArchiveSessionRequestSchema,
   workspaceCreateRequestSchema,
@@ -104,6 +105,8 @@ const UNARY_ROUTES: UnaryRoutes = {
   'subagent.history': { schema: subagentHistoryRequestSchema, invoke: (api, r, signal) => api.subagents.history(r, signal) },
   'subagent.prompt': { schema: subagentPromptRequestSchema, invoke: (api, r, signal) => api.subagents.prompt(r, signal) },
   'subagent.interrupt': { schema: subagentInterruptRequestSchema, invoke: (api, r) => api.subagents.interrupt(r) },
+  'git.status': { schema: gitStatusRequestSchema, invoke: (api, r, signal) => api.git.status(r, signal) },
+  'git.diff': { schema: gitDiffRequestSchema, invoke: (api, r, signal) => api.git.diff(r, signal) },
   'host.describe': { schema: hostDescribeRequestSchema, invoke: (api, r) => api.host.describe(r) },
   'host.pickDirectory': { schema: hostPickDirectoryRequestSchema, invoke: (api, r, signal) => api.host.pickDirectory(r, signal) },
   'host.listDirectory': { schema: hostListDirectoryRequestSchema, invoke: (api, r, signal) => api.host.listDirectory(r, signal) },
@@ -172,9 +175,8 @@ function fullResponse(narrow: RpcResponse<unknown>): Response {
  * Wire<> widening back to the exact payload (undefined-valued properties and
  * absent ones are indistinguishable after JSON transport).
  */
-// K appears once in the signature but ties the UNARY_ROUTES[K] row lookup to its own
-// schema/invoke pairing; a union parameter degrades the row to an uninvokable intersection.
-// oxlint-disable-next-line typescript/no-unnecessary-type-parameters
+// K ties the UNARY_ROUTES[K] row lookup to its own schema/invoke pairing; a
+// union parameter degrades the row to an uninvokable intersection.
 async function handleUnary<K extends keyof RpcMethodMap>(
   api: ApiProxy, method: K, message: ClientRequest, signal: AbortSignal,
 ): Promise<Response> {

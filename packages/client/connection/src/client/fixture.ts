@@ -35,6 +35,7 @@ import type {
   ApiProxy, ClientRequest, ClientResponse, HistoryEntry, HostFrame, MuxFrame, RpcReceipt,
   ModelProviderGroup, ModelSelection, RpcRequest, RpcResponse, RpcResult, ServerRequest, ServerResponse, SessionSummary,
   ToolCallView, ToolEventView, ToolResultView, WorkspaceId, WorkspaceView,
+  GitReviewStatusValue, GitReviewDiffValue,
 } from './api.ts'
 import type { RequestPayload, ResponseValue, RpcMethodMap } from '@deepseek-ai/dsh-host-apiproxy/api'
 import { AbstractApiClient, RpcId, SESSION_SEARCH_RESULT_LIMIT } from './api.ts'
@@ -2993,6 +2994,20 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
     downloads: {
       sessionLog: () => Promise.resolve(new Response('fixture mode does not serve session export', { status: 404 })),
     },
+    git: {
+      // Deterministic: the fixture tree is never a Git repository, so every
+      // review lane exercises the not-a-repo surface (keyless e2e safety).
+      status: request => err<{}, GitReviewStatusValue>(request, {
+        code: 'not-a-repo',
+        message: 'the fixture workspace is not inside a Git repository',
+        details: {},
+      }),
+      diff: request => err<{}, GitReviewDiffValue>(request, {
+        code: 'not-a-repo',
+        message: 'the fixture workspace is not inside a Git repository',
+        details: {},
+      }),
+    },
   }
 
   const rpc: ClientConnectionRpc = {
@@ -3093,6 +3108,8 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'subagent.history': return this.api.subagents.history(request)
       case 'subagent.prompt': return this.api.subagents.prompt(request, signal)
       case 'subagent.interrupt': return this.api.subagents.interrupt(request)
+      case 'git.status': return this.api.git.status(request, signal)
+      case 'git.diff': return this.api.git.diff(request, signal)
       case 'host.describe': return this.api.host.describe(request)
       case 'host.pickDirectory': return this.api.host.pickDirectory(request, new AbortController().signal)
       case 'host.listDirectory': return this.api.host.listDirectory(request, new AbortController().signal)

@@ -4,8 +4,10 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { mkdir, stat } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { execFile } from 'node:child_process'
+import { mkdir, readFile, stat } from 'node:fs/promises'
+import { dirname, resolve, sep } from 'node:path'
+import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Agent, ModelSelection, ModelSelectionRef, AgentOptions, AgentStatus } from '@deepseek-ai/dsh-agent'
@@ -35,8 +37,8 @@ import {
 import type { PresetBearingSession } from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {
-  ApiProxy, ConfigurableProviderView, CredentialView, GoalRef, HistoryEntry, HostFrame,
-  ModelCatalogFailure, ModelProviderGroup,
+  ApiProxy, ConfigurableProviderView, CredentialView, GitReviewChange, GitReviewDiffValue,
+  GitReviewStatusValue, GoalRef, HistoryEntry, HostFrame, ModelCatalogFailure, ModelProviderGroup,
   ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
   WorkspaceId, WorkspaceView,
@@ -284,6 +286,85 @@ function paginate(
 /** Wrap an ok result echoing the request's rpcId. */
 function ok<T>(request: RpcRequest<unknown>, value: T): RpcResponse<T> {
   return { rpcId: request.rpcId, result: { ok: true, value } }
+}
+
+const execFileAsync = promisify(execFile)
+
+/** Run one `git` command in `cwd` and return trimmed stdout. */
+async function runGit(cwd: string, args: readonly string[], signal?: AbortSignal): Promise<string> {
+  const { stdout } = await execFileAsync('git', [...args], {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    ...(signal === undefined ? {} : { signal }),
+  })
+  return stdout.trim()
+}
+
+/** Run one `git` command and return stdout untouched (porcelain keeps leading whitespace). */
+async function runGitRaw(cwd: string, args: readonly string[], signal?: AbortSignal): Promise<string> {
+  const { stdout } = await execFileAsync('git', [...args], {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    ...(signal === undefined ? {} : { signal }),
+  })
+  return stdout
+}
+
+/** Resolve the repository root containing `cwd`, throwing when none exists. */
+async function gitRepoRoot(cwd: string, signal?: AbortSignal): Promise<string> {
+  return runGit(cwd, ['rev-parse', '--show-toplevel'], signal)
+}
+
+/** Parse `git status --porcelain=v1` into review change rows. */
+function parsePorcelain(porcelain: string): GitReviewChange[] {
+  const changes: GitReviewChange[] = []
+  for (const line of porcelain.split('\n')) {
+    if (line.length < 4) continue
+    const [x, y] = [line[0], line[1]]
+    const raw = line.slice(3)
+    if (x === '!' && y === '!') continue // ignored
+    // Rename/copy rows: `R  old -> new`; review the surviving path.
+    const arrow = raw.indexOf(' -> ')
+    const path = arrow >= 0 ? raw.slice(arrow + 4) : raw
+    const untracked = x === '?' && y === '?'
+    const conflicted = !untracked && (x === 'U' || y === 'U' || (x !== ' ' && x === y && x !== '?'))
+    const staged = !untracked && x !== ' '
+    const unstaged = !untracked && y !== ' '
+    let status: GitReviewChange['status'] = 'modified'
+    if (untracked) status = 'untracked'
+    else if (conflicted) status = 'conflicted'
+    else {
+      const letter = x !== ' ' ? x : y
+      if (letter === 'A') status = 'added'
+      else if (letter === 'D') status = 'deleted'
+      else if (letter === 'R') status = 'renamed'
+      else if (letter === 'C') status = 'added'
+    }
+    changes.push({ path, status, staged, unstaged, untracked })
+  }
+  return changes
+}
+
+/** Guard a repo-relative review path against escaping the repository root. */
+function assertInsideRepo(repoRoot: string, repoPath: string): string {
+  const absolute = resolve(repoRoot, repoPath)
+  if (!absolute.startsWith(repoRoot + sep) && absolute !== repoRoot) {
+    throw new Error(`git review path escapes the repository: ${repoPath}`)
+  }
+  return absolute
+}
+
+/** Normalize a git failure into a review business error. */
+function gitReviewError(error: unknown, signal: AbortSignal | undefined, fallback: string): RpcError {
+  if (signal?.aborted) return { code: 'cancelled', message: 'git review was aborted', details: {} }
+  const raw = error instanceof Error ? error.message : String(error)
+  // execFile surfaces git's exit code in the error message; distinguish repo absence.
+  if (/not a git repository/i.test(raw)) {
+    return { code: 'not-a-repo', message: 'the directory is not inside a Git repository', details: {} }
+  }
+  return { code: 'git-failed', message: raw || fallback, details: {} }
 }
 
 /**
@@ -2947,6 +3028,58 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
       async openPath(request, signal) {
         return openPath(request, request.payload.path, signal)
+      },
+    },
+
+    git: {
+      // Read-only working-tree review; the payload carries the reviewed cwd
+      // (the client sends its session's workspace root).
+      async status(request, signal) {
+        const { cwd } = request.payload
+        try {
+          const root = await gitRepoRoot(cwd, signal)
+          const branchRaw = await runGit(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'], signal)
+          const branch = branchRaw === 'HEAD' ? null : branchRaw || null
+          const porcelain = await runGitRaw(cwd, ['status', '--porcelain=v1'], signal)
+          return ok(request, {
+            repoRoot: root,
+            branch,
+            changes: parsePorcelain(porcelain),
+          } satisfies GitReviewStatusValue)
+        } catch (error: unknown) {
+          return err(request, gitReviewError(error, signal, 'git.status failed'))
+        }
+      },
+
+      async diff(request, signal) {
+        const { cwd, path: repoPath, staged } = request.payload
+        try {
+          const root = await gitRepoRoot(cwd, signal)
+          const absolute = assertInsideRepo(root, repoPath)
+          const tracked = await runGit(cwd, ['ls-files', '--error-unmatch', '--', repoPath], signal)
+            .then(() => true, () => false)
+          if (!tracked) {
+            const content = await readFile(absolute, 'utf8').catch(() => null)
+            return ok(request, {
+              path: repoPath,
+              staged,
+              untracked: true,
+              diff: '',
+              content,
+            } satisfies GitReviewDiffValue)
+          }
+          const args = staged ? ['diff', '--cached', '--', repoPath] : ['diff', '--', repoPath]
+          const diff = await runGit(cwd, args, signal)
+          return ok(request, {
+            path: repoPath,
+            staged,
+            untracked: false,
+            diff,
+            content: null,
+          } satisfies GitReviewDiffValue)
+        } catch (error: unknown) {
+          return err(request, gitReviewError(error, signal, 'git.diff failed'))
+        }
       },
     },
 

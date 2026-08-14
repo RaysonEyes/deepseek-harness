@@ -300,7 +300,11 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
     if (buttonBox === null || headerBox === null) {
       throw new Error('Session Header export geometry is unavailable')
     }
-    expect(headerBox.x + headerBox.width - (buttonBox.x + buttonBox.width)).toBeLessThanOrEqual(32)
+    // The export button sits in the header's right-aligned utility cluster,
+    // which the panel switcher dock now terminates — so assert containment in
+    // the header rather than the old right-edge flush.
+    expect(buttonBox.x).toBeGreaterThanOrEqual(headerBox.x)
+    expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(headerBox.x + headerBox.width)
     const responsePromise = page.waitForResponse(response =>
       response.request().method() === 'HEAD'
       && new URL(response.url()).pathname === '/api/session.export', { timeout: 30_000 })

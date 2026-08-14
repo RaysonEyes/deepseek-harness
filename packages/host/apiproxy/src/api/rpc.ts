@@ -92,6 +92,12 @@ export interface RpcErrorDetailsMap {
   'subagent-not-resumable': { childSessionId: SessionId }
   'subagent-unauthorized': { childSessionId: SessionId }
   'subagent-delivery-unavailable': { childSessionId: SessionId }
+  /** The reviewed directory is not inside a Git repository. */
+  'not-a-repo': {}
+  /** The reviewed directory does not exist on the host. */
+  'cwd-invalid': {}
+  /** A git command failed for another reason; the message is git's own text. */
+  'git-failed': {}
   'internal': {}
 }
 
