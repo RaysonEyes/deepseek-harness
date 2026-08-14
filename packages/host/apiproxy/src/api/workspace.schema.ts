@@ -7,7 +7,8 @@
 import { z } from 'zod'
 import type { RequestPayload, ResponseValue } from './rpc-map.ts'
 import type { Wire } from './rpc.schema.ts'
-import type { WorkspaceView } from './workspace.ts'
+import type { WorkspaceFsEntry, WorkspaceView } from './workspace.ts'
+import { directoryEntrySchema } from './host.schema.ts'
 import { sessionIdSchema, workspaceIdSchema } from './sessions.schema.ts'
 
 export { workspaceIdSchema } from './sessions.schema.ts'
@@ -98,3 +99,24 @@ export const workspaceArchiveSessionRequestSchema = z.object({
 export const workspaceArchiveSessionValueSchema = z.object({
   archivedSessionIds: z.array(sessionIdSchema),
 }) satisfies z.ZodType<Wire<ResponseValue<'workspace.archiveSession'>>>
+
+/** workspace.listDirectory request payload; an absent path lists the home directory. */
+export const workspaceListDirectoryRequestSchema = z.object({
+  path: z.string().optional(),
+}) satisfies z.ZodType<Wire<RequestPayload<'workspace.listDirectory'>>>
+
+/** One filesystem child row of the Files panel listing. */
+export const workspaceFsEntrySchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  hidden: z.boolean(),
+  kind: z.enum(['directory', 'file']),
+}) satisfies z.ZodType<Wire<WorkspaceFsEntry>>
+
+/** workspace.listDirectory response value. */
+export const workspaceListDirectoryValueSchema = z.object({
+  path: z.string(),
+  home: z.string(),
+  crumbs: z.array(directoryEntrySchema),
+  entries: z.array(workspaceFsEntrySchema),
+}) satisfies z.ZodType<Wire<ResponseValue<'workspace.listDirectory'>>>

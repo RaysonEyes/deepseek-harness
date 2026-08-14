@@ -35,8 +35,11 @@ function apiMock(overrides: Partial<IApiClient> = {}): IApiClient {
       status: vi.fn(async () => ({ rpcId: 'r1', result: { ok: true, value: STATUS } })),
       diff: vi.fn(async () => ({ rpcId: 'r2', result: { ok: true, value: { path: 'src/a.ts', staged: false, untracked: false, diff: '--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1,2 @@\n one\n+two\n', content: null } } })),
     },
+    workspace: {
+      listDirectory: vi.fn(async () => ({ rpcId: 'r3', result: { ok: true, value: { path: CWD, home: '/', crumbs: [{ name: '/', path: '/', hidden: false }], entries: [{ name: 'src', path: CWD + '/src', hidden: false, kind: 'directory' as const }] } } })),
+    },
     host: {
-      listDirectory: vi.fn(async () => ({ rpcId: 'r3', result: { ok: true, value: { path: CWD, home: '/', crumbs: [{ name: '/', path: '/', hidden: false }], entries: [{ name: 'src', path: CWD + '/src', hidden: false }], truncated: false } } })),
+      listDirectory: vi.fn(async () => ({ rpcId: 'r4', result: { ok: true, value: { path: CWD, home: '/', crumbs: [], entries: [], truncated: false } } })),
     },
     ...overrides,
   } as unknown as IApiClient
@@ -89,7 +92,7 @@ describe('PanelDock', () => {
     render(<PanelDock {...props(api)} />)
     fireEvent.click(screen.getByRole('button', { name: en.tabFiles }))
     expect(await screen.findByRole('region', { name: en.panelFiles })).toBeTruthy()
-    expect(api.host.listDirectory).toHaveBeenCalledWith({ path: CWD })
+    expect(api.workspace.listDirectory).toHaveBeenCalledWith({ path: CWD })
     expect(screen.getByText('src')).toBeTruthy()
   })
 

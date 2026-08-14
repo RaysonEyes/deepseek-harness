@@ -10,7 +10,7 @@ export type {
   ApprovalResponsePayload, QuestionResponsePayload, HistoryEntry, ToolEventView,
   DirectoryEntry, DirectoryListing,
   GitApi, GitReviewChange, GitReviewDiffValue, GitReviewStatusValue,
-  ResponseValue, WorkspaceApi, WorkspaceId, WorkspaceView,
+  ResponseValue, WorkspaceApi, WorkspaceDirectoryListing, WorkspaceFsEntry, WorkspaceId, WorkspaceView,
   SkillsApi, SkillEntry,
   ModelCatalogFailure, ModelCatalogModel, ModelProviderGroup, ModelReasoning,
   ModelReasoningEffort, ModelSelection, QueueAction, QueuedInboxItem, SessionModels,

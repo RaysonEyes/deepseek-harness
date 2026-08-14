@@ -2685,6 +2685,15 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         }
         return ok(request, { workspace: { ...workspace } })
       },
+      listDirectory: (request) => {
+        const target = request.payload.path ?? FIXTURE_HOME
+        return Promise.resolve(ok(request, {
+          path: target,
+          home: FIXTURE_HOME,
+          crumbs: crumbsOf(target),
+          entries: [{ name: 'docs', path: target + '/docs', hidden: false, kind: 'directory' as const }],
+        }))
+      },
       archiveSession: (request) => {
         const missing = requireSession(request)
         if (missing !== undefined) return missing
@@ -3122,6 +3131,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'workspace.insertBefore': return this.api.workspace.insertBefore(request)
       case 'workspace.insertSessionBefore': return this.api.workspace.insertSessionBefore(request)
       case 'workspace.archiveSession': return this.api.workspace.archiveSession(request)
+      case 'workspace.listDirectory': return this.api.workspace.listDirectory(request, signal)
       case 'skill.list': return this.api.skills.list(request)
       case 'agentPreset.list': return this.api.agentPresets.list(request)
       case 'agentPreset.select': return this.api.agentPresets.select(request)

@@ -5,8 +5,9 @@
 
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { mkdir, readFile, stat } from 'node:fs/promises'
-import { dirname, resolve, sep } from 'node:path'
+import { mkdir, opendir, readFile, stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
@@ -41,7 +42,7 @@ import type {
   GitReviewStatusValue, GoalRef, HistoryEntry, HostFrame, ModelCatalogFailure, ModelProviderGroup,
   ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
-  WorkspaceId, WorkspaceView,
+  WorkspaceDirectoryListing, WorkspaceFsEntry, WorkspaceId, WorkspaceView,
 } from './api/index.ts'
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
@@ -286,6 +287,56 @@ function paginate(
 /** Wrap an ok result echoing the request's rpcId. */
 function ok<T>(request: RpcRequest<unknown>, value: T): RpcResponse<T> {
   return { rpcId: request.rpcId, result: { ok: true, value } }
+}
+
+/** Ancestor chain from the filesystem root to `target` inclusive (breadcrumb rows). */
+function fsAncestryCrumbs(target: string): { name: string; path: string; hidden: false }[] {
+  const crumbs: { name: string; path: string; hidden: false }[] = []
+  let current = target
+  for (;;) {
+    const parent = dirname(current)
+    crumbs.unshift({ name: parent === current ? current : basename(current), path: current, hidden: false })
+    if (parent === current) return crumbs
+    current = parent
+  }
+}
+
+/** List one directory level: directories first, then files, both name-sorted. */
+async function listDirectoryLevel(target: string): Promise<{ listing: WorkspaceDirectoryListing } | { error: string }> {
+  let dir
+  try {
+    dir = await opendir(target)
+  } catch {
+    return { error: `cannot list directory: ${target}` }
+  }
+  const directories: WorkspaceFsEntry[] = []
+  const files: WorkspaceFsEntry[] = []
+  try {
+    for await (const entry of dir) {
+      const name = entry.name
+      const path = join(target, name)
+      let isDir = entry.isDirectory()
+      if (entry.isSymbolicLink()) {
+        isDir = await stat(path).then(info => info.isDirectory()).catch(() => false)
+      }
+      const row: WorkspaceFsEntry = { name, path, hidden: name.startsWith('.'), kind: isDir ? 'directory' : 'file' }
+      if (isDir) directories.push(row)
+      else files.push(row)
+    }
+  } catch {
+    return { error: `failed reading directory: ${target}` }
+  }
+  const byName = (a: WorkspaceFsEntry, b: WorkspaceFsEntry): number => a.name.localeCompare(b.name)
+  directories.sort(byName)
+  files.sort(byName)
+  return {
+    listing: {
+      path: target,
+      home: homedir(),
+      crumbs: fsAncestryCrumbs(target),
+      entries: [...directories, ...files],
+    },
+  }
 }
 
 const execFileAsync = promisify(execFile)
@@ -2821,6 +2872,20 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     },
 
     workspace: {
+      listDirectory(request, signal) {
+        if (signal?.aborted) {
+          return Promise.resolve(err(request, { code: 'cancelled', message: 'directory listing was aborted', details: {} }))
+        }
+        const target = request.payload.path ?? homedir()
+        return Promise.resolve().then(async () => {
+          const result = await listDirectoryLevel(target)
+          if ('error' in result) {
+            return err(request, { code: 'directory-unreadable' as const, message: result.error, details: { path: target } })
+          }
+          return ok(request, result.listing)
+        })
+      },
+
       list(request) {
         return Promise.resolve(ok(request, {
           items: ctx.workspaceRegistry.list().map(workspaceView),

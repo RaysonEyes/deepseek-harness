@@ -222,6 +222,7 @@ export class FakeApiClient implements IApiClient {
       this.record('workspace.insertBefore', payload, this.onWorkspaceInsertBefore(payload)),
     insertSessionBefore: (payload: unknown) =>
       this.record('workspace.insertSessionBefore', payload, this.onWorkspaceInsertSessionBefore(payload)),
+    listDirectory: () => Promise.resolve(ok({ path: '/fake', home: '/', crumbs: [], entries: [] })),
     archiveSession: (payload: unknown) =>
       this.record('workspace.archiveSession', payload, this.onWorkspaceArchiveSession(payload)),
   }

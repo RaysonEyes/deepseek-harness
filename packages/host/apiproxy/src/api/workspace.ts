@@ -35,6 +35,30 @@ export interface WorkspaceView {
   updatedAt: string
 }
 
+/** One filesystem child of a listed directory: a directory or a regular file. */
+export interface WorkspaceFsEntry {
+  /** Base name within the listed level. */
+  name: string
+  /** Absolute host path. */
+  path: string
+  /** Hidden by host convention (dot-prefixed on POSIX); the client owns whether to show it. */
+  hidden: boolean
+  /** Entry kind so the Files panel can navigate folders and show files. */
+  kind: 'directory' | 'file'
+}
+
+/** One directory level for the Files panel, directories first then files. */
+export interface WorkspaceDirectoryListing {
+  /** Absolute path of the listed directory. */
+  path: string
+  /** The host account's home directory (breadcrumb "Home" rooting). */
+  home: string
+  /** Ancestor chain from the filesystem root to the listed directory inclusive. */
+  crumbs: import('./host.ts').DirectoryEntry[]
+  /** Direct children: directories (name-sorted), then files (name-sorted). */
+  entries: WorkspaceFsEntry[]
+}
+
 /** Workspace-domain unary methods (the map keys workspace.* of RpcMethodMap). */
 export interface WorkspaceApi {
   /**
@@ -106,4 +130,15 @@ export interface WorkspaceApi {
    */
   archiveSession(request: RpcRequest<{ sessionId: SessionId }>):
   Promise<RpcResponse<{ archivedSessionIds: SessionId[] }>>
+
+  /**
+   * List one directory level for the Files panel, independent of the
+   * directory-picker backend (native deployments do not serve the browse
+   * capability). An absent path lists the host home directory; a missing or
+   * unreadable target fails with `directory-unreadable`.
+   */
+  listDirectory(
+    request: RpcRequest<{ path?: string }>,
+    signal?: AbortSignal,
+  ): Promise<RpcResponse<WorkspaceDirectoryListing>>
 }
