@@ -47,6 +47,29 @@ pnpm --filter @deepseek-ai/dsh-desktop run dev
 The same `resources/backend` closure is used; rebuild it after any `pnpm run build` that changes
 the CLI or frontend.
 
+## Updating after upstream or local changes
+
+The `.app` ships a snapshot: the CLI closure (`resources/backend`) and the web frontend dist are
+deployed copies, so a source change reaches the desktop app only after the closure and the package
+are rebuilt. After `git pull`/rebase or your own edits:
+
+```sh
+pnpm install      # new dependencies
+pnpm run build    # repo lib + web dist
+pnpm --filter @deepseek-ai/dsh-desktop run build:app   # Electron main + closure deploy + package
+```
+
+Or run the one-command wrapper, which also runs a headless smoke capture against a fresh profile:
+
+```sh
+scripts/rebuild-desktop-app.sh
+```
+
+Artifacts land in `dist-app/` again; replace the installed copy with the new
+`mac-arm64/DeepSeek Harness.app` (or install the new `.dmg`). Set
+`ELECTRON_BUILDER_BINARIES_MIRROR` (e.g. the npmmirror mirror) when electron-builder downloads
+are slow.
+
 ## Verification hooks
 
 - `DSH_DESKTOP_CAPTURE=/path/to/shot.png` — capture the window to a PNG after the page settles.
