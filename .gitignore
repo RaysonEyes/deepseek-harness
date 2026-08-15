@@ -42,3 +42,6 @@ worktrees/
 apps/desktop/resources/
 apps/desktop/dist-app/
 apps/desktop/build/
+# Local dsh web daemon launchers (machine-specific paths; never shared)
+scripts/launch-dsh-web.sh
+scripts/daemon-dsh-web.sh
