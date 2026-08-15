@@ -57,7 +57,7 @@ export type {
 } from './subagents.ts'
 export type { JobView } from './jobs.ts'
 export type {
-  WorkspaceApi, WorkspaceDirectoryListing, WorkspaceFsEntry, WorkspaceId, WorkspaceView,
+  WorkspaceApi, WorkspaceDirectoryListing, WorkspaceFileContent, WorkspaceFsEntry, WorkspaceId, WorkspaceView,
 } from './workspace.ts'
 export type { SkillsApi, SkillEntry } from './skills.ts'
 export type { AgentPresetsApi, AgentPresetEntry } from './agent-presets.ts'

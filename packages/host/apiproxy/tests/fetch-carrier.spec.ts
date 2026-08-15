@@ -191,6 +191,9 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
       async listDirectory(request) {
         return { rpcId: request.rpcId, result: { ok: true, value: { path: request.payload.path ?? '/', home: '/', crumbs: [], entries: [] } } }
       },
+      async readFile(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { path: request.payload.path, content: 'x' } } }
+      },
       async archiveSession(request) {
         return { rpcId: request.rpcId, result: { ok: true, value: { archivedSessionIds: [request.payload.sessionId] } } }
       },

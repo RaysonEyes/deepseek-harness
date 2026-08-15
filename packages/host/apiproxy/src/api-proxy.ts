@@ -5,7 +5,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { mkdir, opendir, readFile, stat } from 'node:fs/promises'
+import { mkdir, opendir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
@@ -135,19 +135,74 @@ function decodeBase64(data: string): Uint8Array {
   return new Uint8Array(decoded)
 }
 
-/** Validate one prompt as a batch before publishing any durable image object. */
-async function durablePromptContent(ctx: Context, content: readonly PromptContentPart[]): Promise<ContentBlock[]> {
+/** Default maximum encoded bytes accepted for one attached non-image file. */
+const DEFAULT_MAX_FILE_BYTES = 25 * 1024 * 1024
+/** Default maximum non-image files accepted in one submitted message. */
+const DEFAULT_MAX_FILES_PER_MESSAGE = 10
+/** Default maximum aggregate attached-file bytes accepted in one submitted message. */
+const DEFAULT_MAX_MESSAGE_FILE_BYTES = 100 * 1024 * 1024
+/** Workspace subdirectory receiving browser-attached files (model-relative path). */
+const UPLOAD_DIR = '.uploads'
+
+/** Strip path segments and control bytes from a browser-supplied file name. */
+function safeUploadName(name: string): string {
+  const leaf = name.slice(Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\')) + 1)
+  const clean = leaf.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 255)
+  return clean === '' ? 'attachment' : clean
+}
+
+/** Write one attached file into the session workspace and return its model-relative path. */
+async function materializeUploadedFile(cwd: string | undefined, name: string, data: Uint8Array): Promise<string> {
+  if (cwd === undefined) throw new AttachmentError('Session has no project directory to receive attachments.', 'NO_SESSION_CWD')
+  const dir = join(cwd, UPLOAD_DIR)
+  await mkdir(dir, { recursive: true })
+  const fileName = randomUUID().slice(0, 8) + '-' + safeUploadName(name)
+  await writeFile(join(dir, fileName), data, { flag: 'wx' })
+  return join(UPLOAD_DIR, fileName)
+}
+
+/** Validate one prompt as a batch before publishing any durable image object or workspace file. */
+async function durablePromptContent(ctx: Context, content: readonly PromptContentPart[], cwd?: string): Promise<ContentBlock[]> {
   if (content.every(part => part.type === 'text')) {
     return content.map(part => ({ type: 'text', text: part.text }))
+  }
+  const imageLimits = ctx.attachments.imageLimits
+  const imageParts = content.filter((part): part is Extract<PromptContentPart, { type: 'image' }> => part.type === 'image')
+  const fileParts = content.filter((part): part is Extract<PromptContentPart, { type: 'file' }> => part.type === 'file')
+  if (imageParts.length > imageLimits.maxImagesPerMessage) {
+    throw new AttachmentError('Prompt exceeds the configured image-count limit.', 'TOO_MANY_IMAGES')
+  }
+  if (fileParts.length > DEFAULT_MAX_FILES_PER_MESSAGE) {
+    throw new AttachmentError('Prompt exceeds the configured file-count limit.', 'TOO_MANY_FILES')
   }
   const prepared = content.map(part => part.type === 'text'
     ? part
     : { part, data: decodeBase64(part.data) })
-  const images = prepared.filter((part): part is Extract<typeof part, { data: Uint8Array }> => 'data' in part)
-  const refs = await ctx.attachments.saveImages(images.map(image => ({
-    data: image.data,
-    mediaType: image.part.mediaType,
-    ...image.part.name === undefined ? {} : { name: image.part.name },
+  const binary = prepared.filter((item): item is Extract<typeof item, { data: Uint8Array }> => 'data' in item)
+  const imageBytes = binary.filter(item => item.part.type === 'image').reduce((sum, item) => sum + item.data.byteLength, 0)
+  const fileBytes = binary.filter(item => item.part.type === 'file').reduce((sum, item) => sum + item.data.byteLength, 0)
+  if (imageBytes > imageLimits.maxMessageImageBytes) {
+    throw new AttachmentError('Prompt exceeds the configured aggregate image-byte limit.', 'IMAGES_TOO_LARGE')
+  }
+  if (fileBytes > DEFAULT_MAX_MESSAGE_FILE_BYTES) {
+    throw new AttachmentError('Prompt exceeds the configured aggregate file-byte limit.', 'FILES_TOO_LARGE')
+  }
+  for (const item of binary) {
+    if (item.part.type === 'file' && item.data.byteLength > DEFAULT_MAX_FILE_BYTES) {
+      throw new AttachmentError('File exceeds the configured byte limit.', 'FILE_TOO_LARGE')
+    }
+    if (item.part.type === 'image') {
+      await ctx.attachments.validateImage({
+        data: item.data,
+        mediaType: item.part.mediaType,
+        ...(item.part.name === undefined ? {} : { name: item.part.name }),
+      })
+    }
+  }
+  const refs = await ctx.attachments.saveImages(binary.filter(item => item.part.type === 'image').map(item => ({
+    data: item.data,
+    mediaType: item.part.mediaType,
+    ...(item.part.name === undefined ? {} : { name: item.part.name }),
   })))
   const blocks: ContentBlock[] = []
   let imageIndex = 0
@@ -156,10 +211,18 @@ async function durablePromptContent(ctx: Context, content: readonly PromptConten
       blocks.push({ type: 'text', text: item.text })
       continue
     }
-    const attachment = refs[imageIndex++]
-    /* v8 ignore next -- each prepared image supplied exactly one saveImages input and therefore one ordered ref. */
-    if (attachment === undefined) throw new Error('attachment batch result did not preserve input cardinality')
-    blocks.push({ type: 'image', attachment })
+    if (item.part.type === 'image') {
+      const attachment = refs[imageIndex++]
+      /* v8 ignore next -- each prepared image supplied exactly one saveImages input and therefore one ordered ref. */
+      if (attachment === undefined) throw new Error('attachment batch result did not preserve input cardinality')
+      blocks.push({ type: 'image', attachment })
+      continue
+    }
+    const relativePath = await materializeUploadedFile(cwd, item.part.name, item.data)
+    blocks.push({
+      type: 'text',
+      text: '[Attached file: ' + item.part.name + '] saved to "' + relativePath + '" in the session workspace. Read it with the read_file tool.',
+    })
   }
   return blocks
 }
@@ -2565,7 +2628,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
                 })
               }
             }
-            const durable = await durablePromptContent(ctx, content)
+            const durable = await durablePromptContent(ctx, content, agent.session.header.cwd)
             const message: UserMessage = createUserMessage({ content: durable, source })
             if (mode === 'steer') agent.steer(message)
             else agent.followup(message)
@@ -2872,6 +2935,21 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     },
 
     workspace: {
+      readFile(request, signal) {
+        if (signal?.aborted) {
+          return Promise.resolve(err(request, { code: 'cancelled', message: 'file read was aborted', details: {} }))
+        }
+        const target = request.payload.path
+        return Promise.resolve().then(async () => {
+          try {
+            const content = await readFile(target, 'utf8')
+            return ok(request, { path: target, content })
+          } catch {
+            return err(request, { code: 'directory-unreadable' as const, message: `cannot read file: ${target}`, details: { path: target } })
+          }
+        })
+      },
+
       listDirectory(request, signal) {
         if (signal?.aborted) {
           return Promise.resolve(err(request, { code: 'cancelled', message: 'directory listing was aborted', details: {} }))

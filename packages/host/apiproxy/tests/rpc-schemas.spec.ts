@@ -265,6 +265,14 @@ describe('sessions domain schemas', () => {
     expect(sessionPromptRequestSchema.parse({
       sessionId: 's1', mode: 'queue', content: [],
     }).clientTimeZone).toBeUndefined()
+    // A non-image file part is admitted and round-trips; a missing name rejects.
+    const withFile = sessionPromptRequestSchema.parse({
+      sessionId: 's1', mode: 'queue', content: [{ type: 'file', name: 'report.pdf', data: 'cGRm' }],
+    })
+    expect(withFile.content[0]).toEqual({ type: 'file', name: 'report.pdf', data: 'cGRm' })
+    expect(() => sessionPromptRequestSchema.parse({
+      sessionId: 's1', mode: 'queue', content: [{ type: 'file', data: 'cGRm' }],
+    })).toThrow()
     expect(() => sessionPromptRequestSchema.parse({ sessionId: 's1', mode: 'inject', content: [] })).toThrow()
     expect(sessionPromptValueSchema.parse({ accepted: true }).accepted).toBe(true)
     // The command slot appears only when the prompt dispatched a slash command.

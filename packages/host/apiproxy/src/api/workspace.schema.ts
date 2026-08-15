@@ -120,3 +120,14 @@ export const workspaceListDirectoryValueSchema = z.object({
   crumbs: z.array(directoryEntrySchema),
   entries: z.array(workspaceFsEntrySchema),
 }) satisfies z.ZodType<Wire<ResponseValue<'workspace.listDirectory'>>>
+
+/** workspace.readFile request payload. */
+export const workspaceReadFileRequestSchema = z.object({
+  path: z.string().min(1),
+}) satisfies z.ZodType<Wire<RequestPayload<'workspace.readFile'>>>
+
+/** workspace.readFile response value. */
+export const workspaceReadFileValueSchema = z.object({
+  path: z.string(),
+  content: z.string(),
+}) satisfies z.ZodType<Wire<ResponseValue<'workspace.readFile'>>>

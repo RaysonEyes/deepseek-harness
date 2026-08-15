@@ -89,6 +89,7 @@ function scriptedApi(overrides: {
       insertSessionBefore: r => ok(r, { workspace: { workspaceId: 'w1' as never, path: '/t', title: 't', sessionIds: [], createdAt: '0', updatedAt: '0' } }),
       archiveSession: r => ok(r, { archivedSessionIds: [r.payload.sessionId] }),
       listDirectory: r => ok(r, { path: r.payload.path ?? '/', home: '/', crumbs: [], entries: [] }),
+      readFile: r => ok(r, { path: r.payload.path, content: 'x' }),
     },
     skills: { list: r => ok(r, { skills: [] }), ...overrides.skills },
     agentPresets: {

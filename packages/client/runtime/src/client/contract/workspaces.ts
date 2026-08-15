@@ -21,6 +21,14 @@ export interface IWorkspaces {
    */
   connectWorkspace(workspaceId: WorkspaceId): Promise<SessionId>
   /**
+   * Resolve the blank session a New Session flow lands in when no Workspace
+   * is targeted: reuse an existing blank workspace-less (ungrouped) session
+   * or mint one at the Host's default cwd — the explicit "not in a project"
+   * route.
+   * @returns the reused or newly created session id.
+   */
+  connectUnattached(): Promise<SessionId>
+  /**
    * The New Session flow: connect the explicit, current-Session, or recent
    * Workspace and open the resulting session; failures surface on the session
    * list state.

@@ -62,6 +62,18 @@ export class TestWorkspaces implements IWorkspaces {
   }
 
   /**
+   * Connect a workspace-less (ungrouped) blank session (recorded). The
+   * default returns a fixed unattached session id; stub for richer flows.
+   * @returns the reused or newly created session id.
+   */
+  async connectUnattached(): Promise<SessionId> {
+    this.calls.push({ method: 'connectUnattached', args: [] })
+    const stub = this.stubs.get('connectUnattached')
+    if (stub !== undefined) return await (stub() as Promise<SessionId>)
+    return 'session-unattached' as SessionId
+  }
+
+  /**
    * New-session flow (recorded; stubbed behavior runs when installed).
    * @param workspaceId - optional explicit workspace target.
    */

@@ -180,6 +180,7 @@ export class FakeApiClient implements IApiClient {
       workspace: { workspaceId: 'fk-ws' as never, path: '/f/ws', title: 'ws', sessionIds: [], createdAt: '0', updatedAt: '0' },
     }))),
     listDirectory: (payload: unknown) => this.record('workspace.listDirectory', payload, Promise.resolve(ok({ path: '/fake', home: '/', crumbs: [], entries: [] }))),
+    readFile: (payload: unknown) => this.record('workspace.readFile', payload, Promise.resolve(ok({ path: '/fake', content: '' }))),
     archiveSession: (payload: unknown) => this.record('workspace.archiveSession', payload, Promise.resolve(ok({
       archivedSessionIds: [(payload as { sessionId: SessionId }).sessionId],
     }))),

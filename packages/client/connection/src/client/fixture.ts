@@ -2415,6 +2415,9 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         const userText = content.map(b => (b.type === 'text' ? b.text : '')).join('')
         const durable: ContentBlock[] = content.map((block) => {
           if (block.type === 'text') return block
+          if (block.type === 'file') {
+            return { type: 'text', text: '[Attached file: ' + block.name + '] saved to ".uploads/' + block.name + '" in the session workspace.' }
+          }
           const attachment: ImageAttachmentRef = {
             attachmentId: `fixture:${randomUuid()}` as AttachmentIdType,
             mediaType: block.mediaType,
@@ -2694,6 +2697,8 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           entries: [{ name: 'docs', path: target + '/docs', hidden: false, kind: 'directory' as const }],
         }))
       },
+      readFile: request => Promise.resolve(ok(request, { path: request.payload.path, content: 'fixture file content' })),
+
       archiveSession: (request) => {
         const missing = requireSession(request)
         if (missing !== undefined) return missing
@@ -3132,6 +3137,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'workspace.insertSessionBefore': return this.api.workspace.insertSessionBefore(request)
       case 'workspace.archiveSession': return this.api.workspace.archiveSession(request)
       case 'workspace.listDirectory': return this.api.workspace.listDirectory(request, signal)
+      case 'workspace.readFile': return this.api.workspace.readFile(request, signal)
       case 'skill.list': return this.api.skills.list(request)
       case 'agentPreset.list': return this.api.agentPresets.list(request)
       case 'agentPreset.select': return this.api.agentPresets.select(request)

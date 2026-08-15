@@ -438,8 +438,12 @@ describe('WorkspaceRuntime', () => {
     const emptySessions = new SessionRuntime(emptyCtx, emptyApi, fakeRemote())
     const emptyWorkspaces = new WorkspaceRuntime(emptyCtx, emptyApi, emptySessions)
     const clear = vi.spyOn(emptySessions, 'clear')
+    const open = vi.spyOn(emptySessions, 'open')
     emptyWorkspaces.startSession()
-    expect(clear).toHaveBeenCalledOnce()
+    await expect.poll(() => open.mock.calls.length).toBe(1)
+    expect(clear).not.toHaveBeenCalled()
+    expect(open).toHaveBeenCalledWith(sid('fk-new'))
+    expect(emptyApi.callsOf('session.create')).toEqual([{}])
   })
 
   it('archives a session, projects the set from the response, list, and frame, and clears only the current one', async () => {
@@ -530,7 +534,7 @@ describe('startInitialSelection', () => {
     return { api, sessions, workspaces }
   }
 
-  it('connects the recent Workspace blank session once baselines are ready and opens it', async () => {
+  it('opens a workspace-less blank session once baselines are ready (no auto project)', async () => {
     const b = bench()
     const stop = b.workspaces.startInitialSelection()
     // Nothing happens before both baselines land.
@@ -544,12 +548,14 @@ describe('startInitialSelection', () => {
     await b.sessions.refresh()
     // Store notifications and the connect round trip are microtask-batched.
     await new Promise(resolve => setTimeout(resolve, 0))
-    expect(b.api.callsOf('session.create')).toEqual([{ workspaceId: 'recent' }])
+    // Startup must NOT auto-enter the recent Workspace; it opens a
+    // workspace-less session (no workspaceId in the create payload).
+    expect(b.api.callsOf('session.create')).toEqual([{}])
     expect(b.sessions.list.getSnapshot().current).toBe('s-new')
     stop()
   })
 
-  it('stays idle when a session is already current or no recent Workspace exists', async () => {
+  it('keeps a restored current session; otherwise opens a workspace-less session', async () => {
     const withCurrent = bench()
     withCurrent.api.onList = () => Promise.resolve(ok({
       items: [{ sessionId: sid('s1'), updatedAt: 1, running: false, blank: false }] as never[],
@@ -564,11 +570,13 @@ describe('startInitialSelection', () => {
     stopCurrent()
 
     const noRecent = bench()
+    noRecent.api.onCreate = () => Promise.resolve(ok({ sessionId: sid('s-unattached') }))
     const stopEmpty = noRecent.workspaces.startInitialSelection()
     await noRecent.workspaces.refresh()
     await noRecent.sessions.refresh()
     await new Promise(resolve => setTimeout(resolve, 0))
-    expect(noRecent.api.callsOf('session.create')).toHaveLength(0)
+    expect(noRecent.api.callsOf('session.create')).toEqual([{}])
+    expect(noRecent.sessions.list.getSnapshot().current).toBe('s-unattached')
     expect(() => noRecent.workspaces.startInitialSelection()).toThrow(/already started/)
     stopEmpty()
   })

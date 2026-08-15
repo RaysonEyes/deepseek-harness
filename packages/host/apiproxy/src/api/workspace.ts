@@ -59,6 +59,14 @@ export interface WorkspaceDirectoryListing {
   entries: WorkspaceFsEntry[]
 }
 
+/** Raw text content of one file opened in the Files panel. */
+export interface WorkspaceFileContent {
+  /** Absolute host path of the read file. */
+  path: string
+  /** UTF-8 decoded content (may be truncated by the host bound). */
+  content: string
+}
+
 /** Workspace-domain unary methods (the map keys workspace.* of RpcMethodMap). */
 export interface WorkspaceApi {
   /**
@@ -141,4 +149,13 @@ export interface WorkspaceApi {
     request: RpcRequest<{ path?: string }>,
     signal?: AbortSignal,
   ): Promise<RpcResponse<WorkspaceDirectoryListing>>
+
+  /**
+   * Read one text file's UTF-8 content for the Files panel (bounded read).
+   * A missing path or non-file target fails with `directory-unreadable`.
+   */
+  readFile(
+    request: RpcRequest<{ path: string }>,
+    signal?: AbortSignal,
+  ): Promise<RpcResponse<WorkspaceFileContent>>
 }

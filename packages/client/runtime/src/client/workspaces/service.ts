@@ -117,10 +117,12 @@ export class WorkspaceRuntime implements IWorkspaces {
 
   /**
    * Follow the first complete Workspace/Session baseline and select a default
-   * session exactly once. A restored current session wins; otherwise the most
-   * recent Workspace is connected (reusing or creating its blank session).
-   * Later explicit clears stay cleared instead of retriggering this startup
-   * policy. A failed connect may retry on the next baseline projection.
+   * session exactly once. A restored current session wins; otherwise a
+   * workspace-less blank session is opened (the Host's default cwd), so a
+   * fresh start lands "not in a project" instead of auto-entering the most
+   * recent Workspace. Later explicit clears stay cleared instead of
+   * retriggering this startup policy. A failed connect may retry on the next
+   * baseline projection.
    * @returns disposer for the baseline subscription; late work cannot navigate after disposal.
    */
   startInitialSelection(): () => void {
@@ -135,13 +137,12 @@ export class WorkspaceRuntime implements IWorkspaces {
       const workspace = this.list.getSnapshot()
       if (!workspace.baselinesReady) return
       const current = this.sessions.list.getSnapshot().current
-      const target = workspace.recentWorkspaceId
-      if (current !== undefined || target === undefined) {
+      if (current !== undefined) {
         state = 'done'
         return
       }
       state = 'connecting'
-      void this.connectWorkspace(target).then(
+      void this.connectUnattached().then(
         (sessionId) => {
           if (disposed) return
           if (this.sessions.list.getSnapshot().current === undefined) {
@@ -152,7 +153,7 @@ export class WorkspaceRuntime implements IWorkspaces {
         (reason: unknown) => {
           if (disposed) return
           state = 'waiting'
-          console.warn('initial workspace selection failed:', reason)
+          console.warn('initial workspace-less selection failed:', reason)
         },
       )
     }
@@ -169,7 +170,8 @@ export class WorkspaceRuntime implements IWorkspaces {
    * button, workspace browser): resolve the target Workspace — explicit wins,
    * then the current Session's Workspace, then the recent-Workspace
    * projection — connect its blank session and navigate there; with no
-   * Workspace at all, clear the selection into the New Session view state.
+   * Workspace at all, open a workspace-less blank session (the Host's default
+   * cwd) so a conversation can start without picking a directory.
    * Connect failures are non-fatal (console diagnostics; the current view
    * stays usable).
    * @param workspaceId - explicit target Workspace for scoped actions.
@@ -181,14 +183,41 @@ export class WorkspaceRuntime implements IWorkspaces {
       ? undefined
       : workspace.items.find(item => item.sessionIds.includes(current))?.workspaceId
     const target = workspaceId ?? currentWorkspaceId ?? workspace.recentWorkspaceId
-    if (target === undefined) {
-      this.sessions.clear()
-      return
-    }
-    void this.connectWorkspace(target).then(
+    const connect = target === undefined
+      ? this.connectUnattached()
+      : this.connectWorkspace(target)
+    void connect.then(
       (sessionId) => { this.sessions.open(sessionId) },
       (reason: unknown) => { console.warn('new session failed:', reason) },
     )
+  }
+
+  /**
+   * Resolve the blank session a New Session flow lands in when no Workspace
+   * is registered: reuse an existing blank ungrouped (workspace-less) session
+   * when one is in the list mirror, else mint a fresh workspace-less session
+   * (session.create with neither workspace nor cwd - the Host assigns its
+   * default cwd). Reuse mirrors connectWorkspace: it prevents repeated New
+   * Session taps from accumulating hidden blank orphans.
+   * @returns the reused or newly created session id.
+   */
+  async connectUnattached(): Promise<SessionId> {
+    const snapshot = this.list.getSnapshot()
+    const archived = snapshot.archivedSessionIds
+    const accounted = new Set<SessionId>()
+    for (const item of snapshot.items) {
+      for (const id of item.sessionIds) accounted.add(id)
+    }
+    const sessions = this.sessions.list.getSnapshot()
+    for (const id of sessions.ids) {
+      const summary = sessions.byId[id]
+      if (summary !== undefined && summary.blank
+        && !accounted.has(summary.id)
+        && !archived.includes(summary.id)) {
+        return summary.id
+      }
+    }
+    return this.sessions.create({})
   }
 
   /**
