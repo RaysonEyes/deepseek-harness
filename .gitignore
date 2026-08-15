@@ -38,3 +38,7 @@ apps/web/dist/
 worktrees/
 .agents/worktrees/
 .typert-*/
+# macOS desktop app build artifacts (electron-builder output, deployed CLI closure, generated icon)
+apps/desktop/resources/
+apps/desktop/dist-app/
+apps/desktop/build/

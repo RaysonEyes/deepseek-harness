@@ -1,0 +1,26 @@
+{
+  "name": "@deepseek-ai/dsh-desktop",
+  "description": "macOS desktop shell for the DeepSeek Harness web GUI: an Electron app that spawns the dsh web backend and opens the browser surface in a native window",
+  "version": "0.1.0-rc.5",
+  "private": true,
+  "type": "module",
+  "main": "lib/main.js",
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:backend": "node scripts/build-backend.mjs",
+    "build:icon": "node scripts/render-icon.mjs",
+    "build:app": "pnpm run build && pnpm run build:backend && electron-builder --mac",
+    "dev": "pnpm run build && electron .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^6.0.3"
+  }
+}

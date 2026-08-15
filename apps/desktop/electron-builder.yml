@@ -1,0 +1,29 @@
+appId: ai.deepseek.harness.desktop
+productName: DeepSeek Harness
+copyright: Copyright © 2026 DeepSeek
+directories:
+  output: dist-app
+  buildResources: build
+files:
+  - lib/**/*
+  - package.json
+# The from-root must sit above the closure: electron-builder hardcodes an
+# exclusion of a root-level node_modules directory in extraResources copies,
+# so from: resources (whose only child is backend/) keeps the deployed
+# node_modules tree intact; the copy lands at Resources/backend/.
+extraResources:
+  - from: resources
+    to: .
+    filter:
+      - "backend/**/*"
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.png
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
+npmRebuild: false
