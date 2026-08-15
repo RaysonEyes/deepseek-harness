@@ -197,6 +197,7 @@
     { "path": "./packages/terminal/terminal-bash" },
     { "path": "./packages/shell/tool-bash-persistent" },
     { "path": "./packages/terminal/tool-terminal" },
+    { "path": "./packages/terminal/terminal-web" },
     { "path": "./packages/code-runtime/code-runtime" },
     { "path": "./packages/code-runtime/code-runtime-worker-thread" },
     { "path": "./packages/llm/llm-deepseek" },

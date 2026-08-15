@@ -162,6 +162,12 @@
         # its literals, for example: ['app.internal', ...ctx.webRuntime.trustedHosts].
         trustedHosts: !!js ctx.webRuntime.trustedHosts
 
+    # Bidirectional WebSocket terminal carrier for the panel: streams one
+    # node-pty terminal's raw output to the browser and relays input/resize/close.
+    # Loopback-only — a host shell is as privileged as the settings plane.
+    - id: terminal-web
+      name: '@deepseek-ai/dsh-terminal-web'
+
     - id: api-remotes
       name: '@deepseek-ai/dsh-api-remotes'
 

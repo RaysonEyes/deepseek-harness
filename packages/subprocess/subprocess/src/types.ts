@@ -245,6 +245,13 @@ export interface SubprocessTerminalHandle {
    */
   write(data: string): Promise<void>
   /**
+   * Resize the terminal viewport. Providers without live resize leave this
+   * undefined; the terminal then stays at its spawn size.
+   * @param cols - new column count.
+   * @param rows - new row count.
+   */
+  resize?(cols: number, rows: number): void
+  /**
    * Inspect the current foreground process group.
    * @returns its id and input-wait fact, or undefined when no foreground group can be resolved.
    */
