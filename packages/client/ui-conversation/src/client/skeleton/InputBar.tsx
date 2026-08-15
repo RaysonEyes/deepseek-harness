@@ -10,7 +10,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ChangeEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
+  IconAttachOutline16, IconCloseFill14, IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { AttachmentRail, DropOverlay, ImageLightbox } from '@deepseek-ai/dsh-client-ui-attachment'
 import type { AttachmentRailItem } from '@deepseek-ai/dsh-client-ui-attachment'
@@ -39,7 +39,17 @@ const INERT_DECORATIONS: DraftDecorations = { token: null, chips: [], textRefs: 
 
 /** Rail thumbnail carrying its source attachment for the open/remove callbacks. */
 interface ComposerRailItem extends AttachmentRailItem {
-  attachment: ComposerAttachment
+  attachment: Extract<ComposerAttachment, { kind: 'image' }>
+}
+
+/** Client-side mirror of the host's non-image file byte limit (see api-proxy DEFAULT_MAX_FILE_BYTES). */
+const MAX_FILE_BYTES = 25 * 1024 * 1024
+/** Client-side mirror of the host's non-image file-count limit. */
+const MAX_FILES_PER_MESSAGE = 10
+
+/** True when a browser file should take the dedicated image path. */
+function isImageFile(file: File): boolean {
+  return file.type === 'image/png' || file.type === 'image/jpeg' || file.type === 'image/webp' || file.type === 'image/gif'
 }
 
 export type InputBarProps = ComposerBarProps
@@ -73,8 +83,10 @@ export function InputBar({
     () => input === undefined || draftImages === undefined ? [] : draftImages(input.imageIds),
     [draftImages, input?.imageIds],
   )
+  const imageAttachments = useMemo(() => attachments.filter(attachment => attachment.kind === 'image'), [attachments])
+  const fileAttachments = useMemo(() => attachments.filter(attachment => attachment.kind === 'file'), [attachments])
   const empty = draft.trim() === '' && attachments.length === 0
-  const [preview, setPreview] = useState<ComposerAttachment | null>(null)
+  const [preview, setPreview] = useState<Extract<ComposerAttachment, { kind: 'image' }> | null>(null)
   const [dragActive, setDragActive] = useState(false)
   // Transient error banner (image-intake rejections and prompt failures): the
   // seq keys the Toast so an identical repeated message restarts the
@@ -103,6 +115,7 @@ export function InputBar({
       : `${promptError.error.message} (${promptError.error.code})`)
   }, [promptError, showToast, t, imageLimits])
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const cardRef = useRef<HTMLDivElement | null>(null)
   const dragDepthRef = useRef(0)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -413,7 +426,7 @@ export function InputBar({
       .filter(item => item.kind === 'file')
       .map(item => item.getAsFile())
       .filter((file): file is File => file !== null)
-    if (files.length > 0) intakeImages(files)
+    if (files.length > 0) intakeFiles(files)
     const text = e.clipboardData.getData('text/plain')
     if (text === '') {
       if (files.length > 0) e.preventDefault()
@@ -437,32 +450,39 @@ export function InputBar({
   // never enters the rail — no more submit-time failure rolling the rail
   // back. The host enforces the same limits at submit for callers that bypass
   // this composer.
-  const intakeImages = useCallback((files: readonly File[]): void => {
+  const intakeFiles = useCallback((files: readonly File[]): void => {
     if (addImages === undefined || files.length === 0) return
+    const images = files.filter(file => isImageFile(file))
+    const others = files.filter(file => !isImageFile(file))
     const rejected = ((): string | null => {
-      if (imageLimits !== undefined) {
-        // Format precedes limits (DeepSeek Chat's filter order): a batch with
-        // a non-image must announce the format problem, not a count or size
-        // it could never pass anyway — addImages rejects it authoritatively.
-        if (files.some(file => !(imageLimits.mediaTypes as readonly string[]).includes(file.type))) {
+      if (images.length > 0 && imageLimits !== undefined) {
+        if (images.some(file => !(imageLimits.mediaTypes as readonly string[]).includes(file.type))) {
           return addImages(files)
         }
-        if (attachments.length + files.length > imageLimits.maxImagesPerMessage) {
+        if (imageAttachments.length + images.length > imageLimits.maxImagesPerMessage) {
           return t('image.tooMany', { count: imageLimits.maxImagesPerMessage })
         }
-        if (files.some(file => file.size > imageLimits.maxImageBytes)) {
+        if (images.some(file => file.size > imageLimits.maxImageBytes)) {
           return t('image.fileTooLarge', { size: imageSizeText(imageLimits.maxImageBytes) })
         }
-        const total = attachments.reduce((sum, attachment) => sum + attachment.file.size, 0)
-          + files.reduce((sum, file) => sum + file.size, 0)
+        const total = imageAttachments.reduce((sum, attachment) => sum + attachment.file.size, 0)
+          + images.reduce((sum, file) => sum + file.size, 0)
         if (total > imageLimits.maxMessageImageBytes) {
           return t('image.totalTooLarge', { size: imageSizeText(imageLimits.maxMessageImageBytes) })
+        }
+      }
+      if (others.length > 0) {
+        if (fileAttachments.length + others.length > MAX_FILES_PER_MESSAGE) {
+          return t('file.tooMany', { count: MAX_FILES_PER_MESSAGE })
+        }
+        if (others.some(file => file.size > MAX_FILE_BYTES)) {
+          return t('file.fileTooLarge', { size: imageSizeText(MAX_FILE_BYTES) })
         }
       }
       return addImages(files)
     })()
     if (rejected !== null) showToast(rejected)
-  }, [addImages, attachments, imageLimits, showToast, t])
+  }, [addImages, imageAttachments, fileAttachments, imageLimits, showToast, t])
 
   // Whole-page file-drop intake (DeepSeek Chat behavior): the listeners live
   // on the document so a drop anywhere over the window adds images, not only
@@ -505,7 +525,7 @@ export function InputBar({
       event.preventDefault()
       reset()
       if (!canAcceptDrop) return
-      intakeImages([...(event.dataTransfer?.files ?? [])])
+      intakeFiles([...(event.dataTransfer?.files ?? [])])
     }
     document.addEventListener('dragenter', onDragEnter)
     document.addEventListener('dragover', onDragOver)
@@ -519,19 +539,19 @@ export function InputBar({
       document.removeEventListener('drop', onDrop)
       window.removeEventListener('dragend', reset)
     }
-  }, [canAcceptDrop, intakeImages])
+  }, [canAcceptDrop, intakeFiles])
 
   const closePreview = useCallback(() => { setPreview(null) }, [])
 
   // Rail thumbnails with their strings resolved here: the attachment atoms are
   // zero-cordis and read no locale.
-  const railItems = useMemo<ComposerRailItem[]>(() => attachments.map(attachment => ({
+  const railItems = useMemo<ComposerRailItem[]>(() => imageAttachments.map(attachment => ({
     id: attachment.id,
     previewUrl: attachment.previewUrl,
     alt: attachment.file.name || t('image.pending'),
     removeLabel: t('image.remove', { name: attachment.file.name }),
     attachment,
-  })), [attachments, t])
+  })), [imageAttachments, t])
 
   const onSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>): void => {
     // Any caret/selection gesture ends a live paste attempt (the machine
@@ -552,6 +572,15 @@ export function InputBar({
   const onToggleCommandMenu = (): void => {
     const el = inputRef.current
     if (el !== null) toggleCommandMenu?.(selectionOf(el))
+  }
+
+  // Route files chosen through the paperclip button into the same image-intake
+  // pipeline the paste and drop paths use; reset the input so re-selecting the
+  // same file(s) re-fires change.
+  const onPickFiles = (e: ChangeEvent<HTMLInputElement>): void => {
+    const files = Array.from(e.currentTarget.files ?? [])
+    if (files.length > 0) intakeFiles(files)
+    e.currentTarget.value = ''
   }
 
   // Ordinary sessions retain their primary Send/Stop toggle. A continuable
@@ -702,6 +731,23 @@ export function InputBar({
             />
           </div>
         )}
+        {fileAttachments.length > 0 && (
+          <div className={css.fileList} role="group" aria-label={t('file.pending')}>
+            {fileAttachments.map(attachment => (
+              <div key={attachment.id} className={css.fileChip}>
+                <span className={css.fileName}>{attachment.file.name}</span>
+                <button
+                  type="button"
+                  className={css.fileRemove}
+                  aria-label={t('file.remove', { name: attachment.file.name })}
+                  onClick={() => { removeImage?.(attachment.id) }}
+                >
+                  <IconCloseFill14 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         {/* One scrollport, two text layers. The hidden mirror renders draft+'\n' and stretches the
             stack to the draft's FULL height (counting rows by '\n' cannot see soft wraps); the
             absolutely-positioned backdrop and textarea ride that height, and .scroll — capped at 14
@@ -747,6 +793,26 @@ export function InputBar({
         </div>
         <div className={css.row}>
           <div className={css.tools}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className={css.fileInput}
+              tabIndex={-1}
+              onChange={onPickFiles}
+            />
+            <Tooltip label={t('input.attach')} side="top" delayMs={500}>
+              <button
+                type="button"
+                className={css.add}
+                aria-label={t('input.attach')}
+                disabled={locked || machineBusy || addImages === undefined}
+                onMouseDown={keepFocus}
+                onClick={() => { fileInputRef.current?.click() }}
+              >
+                <IconAttachOutline16 size={14} />
+              </button>
+            </Tooltip>
             <Tooltip label={t('input.commands')} side="top" delayMs={500}>
               <button
                 type="button"

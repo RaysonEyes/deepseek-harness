@@ -243,6 +243,40 @@
   scrollbar-gutter: stable;
 }
 
+/* Horizontal split below the root: the conversation column (header,
+   scrollport, bottom panel) and the right-side companion column. The side
+   column costs no width while empty (no entry renders a surface). */
+.columns {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  min-height: 0;
+}
+
+.mainColumn {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sideColumn {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Bottom panel seat: a fixed-height (content-sized) sibling below the
+   scrollport. Empty while no surface is open, so it costs no column space
+   until a panel (terminal/diff) renders at its inline height. */
+.panelSeat {
+  flex: none;
+  min-height: 0;
+}
+
 .root[data-phase='active'] .viewArea {
   flex: 1 0 auto;
   min-height: auto;

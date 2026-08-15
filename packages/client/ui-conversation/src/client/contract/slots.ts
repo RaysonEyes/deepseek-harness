@@ -22,13 +22,10 @@ import type { ComposerSubmitGesture, InputSubmitMode } from './composer-submissi
 import type { ChatNode, ChatNodeKind } from './chat-nodes.ts'
 import type { CallId, SelectionTarget, ViewTab } from './views.ts'
 
-/** Browser-owned image that has not crossed the durable host boundary. */
-export interface ComposerAttachment {
-  kind: 'image'
-  id: DraftAttachmentId
-  file: File
-  previewUrl: string
-}
+/** Browser-owned attachment (image or non-image file) that has not crossed the durable host boundary. */
+export type ComposerAttachment =
+  | { kind: 'image'; id: DraftAttachmentId; file: File; previewUrl: string }
+  | { kind: 'file'; id: DraftAttachmentId; file: File }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -66,6 +63,24 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * group, so an optional utility cannot reorder session context or lineage.
      */
     'conversation.session.header.utilities': { kind: 'list'; scope: 'session'; owner: ConversationHeaderActionOwnerProps }
+    /**
+     * The bottom panel seat below the conversation scrollport: a vertical
+     * split (transcript above, surface below) so an open terminal/diff never
+     * overlays the conversation. Session scope: entries read the cwd through
+     * the standard kit. Declared by this package's 'conversation' entry; the
+     * seat renders below the scroll body and reserves column height for its
+     * occupant, so contributors add a full-height surface without owning the
+     * resident scrollport.
+     */
+    'conversation.panel': { kind: 'list'; scope: 'session' }
+    /**
+     * The right-side companion seat beside the conversation column: a
+     * horizontal split (conversation left, surface right) so an open browser
+     * never overlays the transcript or the bottom panel. Session scope, like
+     * `conversation.panel`; the column costs no width while no entry renders
+     * a surface.
+     */
+    'conversation.side': { kind: 'list'; scope: 'session' }
     /**
      * The conversation view ring: one list entry per view tab (chat here;
      * trajectory/waterfall from ui-trajectory), rendered one-at-a-time by
@@ -417,6 +432,12 @@ export interface ConversationInjected {
    */
   selectWorkspace: (workspaceId: WorkspaceId) => Promise<void>
   /**
+   * Open a workspace-less blank session (the Host's default cwd) — the
+   * explicit "not in a project" choice. When a blank session is already
+   * current, carry its draft to the target.
+   */
+  selectUnattached: () => Promise<void>
+  /**
    * Framework-bound sources. `composerBlock` is this session's block when a
    * plugin raised one; the reason is the blocker's own localized copy, which
    * the root renders as the inert composer's placeholder.
@@ -569,6 +590,7 @@ export interface ComposerChainProps {
 export type ConversationSlotProps =
   PropsRuntime<'conversation'> & PropsRenderSlots<
     | 'conversation.session' | 'conversation.session.header'
+    | 'conversation.panel' | 'conversation.side'
     | 'conversation.composer' | 'conversation.composer.bar'
     | 'conversation.input.overlay'
     | 'conversation.input.dock' | 'conversation.composer.dock'
@@ -732,5 +754,10 @@ export interface EmptyWorkspaceOwnerProps {
   /** Currently active workspace (renders a trailing check in the picker list). */
   selectedId?: WorkspaceId | undefined
   onPick: (workspaceId: WorkspaceId) => void
+  /**
+   * Open a workspace-less blank session (the Host's default cwd) — the
+   * explicit "not in a project" choice. Absent hides the picker entry.
+   */
+  onPickUnattached?: () => void
   onClose: () => void
 }

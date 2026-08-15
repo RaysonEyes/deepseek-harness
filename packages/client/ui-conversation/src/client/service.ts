@@ -60,12 +60,10 @@ export interface IConversation {
 
 /** Create one browser-only draft descriptor; only its id enters input state. */
 function browserDraftAttachment(file: File): ComposerAttachment {
-  return {
-    kind: 'image',
-    id: crypto.randomUUID() as DraftAttachmentId,
-    previewUrl: URL.createObjectURL(file),
-    file,
-  }
+  const id = crypto.randomUUID() as DraftAttachmentId
+  return isImageType(file.type)
+    ? { kind: 'image', id, previewUrl: URL.createObjectURL(file), file }
+    : { kind: 'file', id, file }
 }
 
 interface ImageUrlEntry {
@@ -149,7 +147,7 @@ export class ConversationController extends Service implements IConversation {
     if (attachments.length !== imageIds.length) {
       throw new Error('conversation.sendSession: one or more draft images are no longer available')
     }
-    const uploaded = await this.serializeImages(attachments.map(attachment => attachment.file))
+    const uploaded = await this.serializeAttachments(attachments)
     const content = [...uploaded, ...(text === '' ? [] : [{ type: 'text' as const, text }])]
     const result = await session.prompt(content, mode)
     if (!result.ok) throw new Error(`conversation.send failed: ${result.error.code}: ${result.error.message}`)
@@ -162,11 +160,10 @@ export class ConversationController extends Service implements IConversation {
    * @returns ordered draft descriptors.
    */
   createDraftImages(files: readonly File[]): readonly ComposerAttachment[] {
-    for (const file of files) imageMediaType(file.type)
     return files.map((file) => {
       const attachment = browserDraftAttachment(file)
       this.draftAttachments.set(attachment.id, attachment)
-      this.createdImageUrls.add(attachment.previewUrl)
+      if (attachment.kind === 'image') this.createdImageUrls.add(attachment.previewUrl)
       return attachment
     })
   }
@@ -193,8 +190,10 @@ export class ConversationController extends Service implements IConversation {
     const attachment = this.draftAttachments.get(id)
     if (attachment === undefined) return
     this.draftAttachments.delete(id)
-    this.createdImageUrls.delete(attachment.previewUrl)
-    revokePreview(attachment.previewUrl)
+    if (attachment.kind === 'image') {
+      this.createdImageUrls.delete(attachment.previewUrl)
+      revokePreview(attachment.previewUrl)
+    }
   }
 
   /**
@@ -312,15 +311,29 @@ export class ConversationController extends Service implements IConversation {
     return sessions
   }
 
-  /** Convert browser files to canonical base64 prompt parts. */
-  private serializeImages(images: readonly File[]): Promise<Parameters<SessionFace['prompt']>[0]> {
-    return Promise.all(images.map(async file => ({
-      type: 'image' as const,
-      mediaType: imageMediaType(file.type),
-      data: bytesToBase64(new Uint8Array(await file.arrayBuffer())),
-      ...(file.name === '' ? {} : { name: file.name }),
-    })))
+  /** Convert browser attachments to canonical base64 prompt parts. */
+  private serializeAttachments(attachments: readonly ComposerAttachment[]): Promise<Parameters<SessionFace['prompt']>[0]> {
+    return Promise.all(attachments.map(async (attachment) => {
+      const data = bytesToBase64(new Uint8Array(await attachment.file.arrayBuffer()))
+      if (attachment.kind === 'image') {
+        return {
+          type: 'image' as const,
+          mediaType: imageMediaType(attachment.file.type),
+          data,
+          ...(attachment.file.name === '' ? {} : { name: attachment.file.name }),
+        }
+      }
+      return {
+        type: 'file' as const,
+        name: attachment.file.name === '' ? 'attachment' : attachment.file.name,
+        data,
+      }
+    }))
   }
+}
+
+function isImageType(value: string): boolean {
+  return value === 'image/png' || value === 'image/jpeg' || value === 'image/webp' || value === 'image/gif'
 }
 
 function imageMediaType(value: string): ImageMediaType {

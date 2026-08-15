@@ -304,4 +304,23 @@ describe('WorkspacePicker', () => {
     expect(screen.getByRole<HTMLButtonElement>('menuitem', { name: 'Alpha' }).disabled).toBe(false)
     expect(screen.queryByRole('menuitem', { name: '添加工作区…' })).toBeNull()
   })
+
+  it('offers a "not in project" entry that routes through onPickUnattached', () => {
+    const onPickUnattached = vi.fn()
+    const { renderSlot } = flowProbe()
+    render(
+      <WorkspacePicker
+        open anchorRef={anchor()} useSessions={hook(sessions)} useWorkspaces={hook(workspaceState([workspace('alpha', 'Alpha')]))}
+        onPick={vi.fn()} onPickUnattached={onPickUnattached} onClose={vi.fn()} createWorkspace={vi.fn()}
+        useDirectoryFlow={occupancySource().useDirectoryFlow} renderSlot={renderSlot} t={t}
+      />,
+    )
+    fireEvent.click(screen.getByRole('menuitem', { name: '不在项目中工作' }))
+    expect(onPickUnattached).toHaveBeenCalled()
+  })
+
+  it('hides the "not in project" entry when the owner supplies no handler', () => {
+    mount([workspace('alpha', 'Alpha')])
+    expect(screen.queryByRole('menuitem', { name: '不在项目中工作' })).toBeNull()
+  })
 })

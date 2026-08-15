@@ -199,6 +199,8 @@ export function apply(ctx: Context): void {
     children: {
       'conversation.session': { kind: 'single', scope: 'session' },
       'conversation.session.header': { kind: 'single', scope: 'session' },
+      'conversation.panel': { kind: 'list', scope: 'session' },
+      'conversation.side': { kind: 'list', scope: 'session' },
       'conversation.composer': { kind: 'chain', scope: 'session' },
       'conversation.composer.bar': { kind: 'single', scope: 'session-maybe' },
       'conversation.input.overlay': { kind: 'list', scope: 'session' },
@@ -209,10 +211,10 @@ export function apply(ctx: Context): void {
       'conversation.hero.workspace': { kind: 'single', scope: 'root' },
       'conversation.hero.agentPreset': { kind: 'single', scope: 'root' },
     },
-    inject: (sessionId: SessionId | undefined): ConversationInjected => ({
-      hooks: { composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId) },
-      selectWorkspace: async (workspaceId) => {
-        const nextId = await workspaces.connectWorkspace(workspaceId)
+    inject: (sessionId: SessionId | undefined): ConversationInjected => {
+      // Carry a blank session's draft/images to a newly targeted session, then
+      // open it — shared by the workspace pick and the "not in a project" pick.
+      const switchTo = (nextId: SessionId): void => {
         if (sessionId !== undefined && nextId !== sessionId) {
           const from = inputHub.shell(sessionId)
           const draft = from.snapshot.draft
@@ -229,8 +231,17 @@ export function apply(ctx: Context): void {
           }
         }
         sessions.open(nextId)
-      },
-    }),
+      }
+      return {
+        hooks: { composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId) },
+        selectWorkspace: async (workspaceId) => {
+          switchTo(await workspaces.connectWorkspace(workspaceId))
+        },
+        selectUnattached: async () => {
+          switchTo(await workspaces.connectUnattached())
+        },
+      }
+    },
   }, ConversationRoot)
 
   // The strict session body fills the resident scrollport without owning it;

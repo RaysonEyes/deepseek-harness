@@ -11,7 +11,7 @@
 import type { ReactNode, RefObject } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Button, IconFolderClose16, IconPlusOutline16, Menu, Modal, type MenuEntry,
+  Button, IconFolderClose16, IconNewChatOutline16, IconPlusOutline16, Menu, Modal, type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   WorkspaceId, WorkspaceListState, WorkspaceView,
@@ -21,6 +21,7 @@ import type { DirectoryFlowOwnerProps, WorkspacePickerProps } from './contract/s
 import css from './WorkspacePicker.module.css'
 
 const ADD_WORKSPACE = '::add-workspace'
+const NOT_IN_PROJECT = '::not-in-project'
 
 /** Core flow props: the owner supplies popover control and pick semantics. */
 export interface WorkspacePickFlowProps {
@@ -40,6 +41,8 @@ export interface WorkspacePickFlowProps {
   renderDirectoryFlow: (owner: DirectoryFlowOwnerProps) => ReactNode
   /** A real Workspace was picked or created. */
   onPick: (workspaceId: WorkspaceId) => void
+  /** Open a workspace-less blank session — the explicit "not in a project" choice; absent hides the entry. */
+  onPickUnattached?: (() => void) | undefined
   /** Close the popover (outside click / Escape / post-pick). */
   onClose: () => void
   /** Only offer the add action, hide existing workspaces. */
@@ -64,6 +67,7 @@ export function WorkspacePickFlow({
   useDirectoryFlow,
   renderDirectoryFlow,
   onPick,
+  onPickUnattached,
   onClose,
   addOnly = false,
   side = 'bottom',
@@ -104,13 +108,21 @@ export function WorkspacePickFlow({
   // With workspaces listed, the add action pins below the scroll region
   // (divider + always visible); otherwise it IS the menu.
   const pinAdd = !addOnly && workspaces.length > 0
+  // The explicit "not in a project" choice trails the workspace rows — it is
+  // the route out of every project directory back to the Host default cwd.
+  const notInProjectEntry: MenuEntry | null = onPickUnattached !== undefined
+    ? { id: NOT_IN_PROJECT, label: t('menu.notInProject'), icon: <IconNewChatOutline16 size={16} />, disabled: flowBusy }
+    : null
   const items: MenuEntry[] = pinAdd
-    ? workspaces.map(workspace => ({
-      id: workspace.workspaceId,
-      label: workspace.title,
-      icon: <IconFolderClose16 size={16} />,
-      disabled: flowBusy,
-    }))
+    ? [
+      ...workspaces.map(workspace => ({
+        id: workspace.workspaceId,
+        label: workspace.title,
+        icon: <IconFolderClose16 size={16} />,
+        disabled: flowBusy,
+      })),
+      ...(notInProjectEntry === null ? [] : [notInProjectEntry]),
+    ]
     : addEntries
   // Nothing listed and nothing to add with (a composition that mounts this
   // package without any directory-picker): an empty popover would claim a
@@ -177,6 +189,10 @@ export function WorkspacePickFlow({
       openDirectoryFlow()
       return
     }
+    if (id === NOT_IN_PROJECT) {
+      onPickUnattached?.()
+      return
+    }
     onPick(id as WorkspaceId)
   }
 
@@ -228,6 +244,7 @@ export function WorkspacePicker({
   useWorkspaces,
   selectedId,
   onPick,
+  onPickUnattached,
   onClose,
   createWorkspace,
   useDirectoryFlow,
@@ -245,6 +262,7 @@ export function WorkspacePicker({
       renderDirectoryFlow={owner => renderSlot('conversation.hero.workspace.directoryFlow', owner)}
       selectedId={selectedId}
       onPick={onPick}
+      onPickUnattached={onPickUnattached}
       onClose={onClose}
     />
   )

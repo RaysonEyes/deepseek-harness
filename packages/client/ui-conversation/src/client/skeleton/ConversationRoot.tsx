@@ -14,7 +14,7 @@ export type ConversationRootProps = ConversationSlotProps
 
 export function ConversationRoot({
   sessionId, useSession, useSessions, useWorkspaces, useInput, useComposerBlock,
-  renderSlot, renderSlotChain, selectWorkspace, t,
+  renderSlot, renderSlotChain, selectWorkspace, selectUnattached, t,
 }: ConversationRootProps) {
   const openState = useSession(s => s.openState)
   const composerPhase = useSession(s => s.composerPhase)
@@ -117,21 +117,27 @@ export function ConversationRoot({
             setPendingWorkspaceId(current => current === workspaceId ? undefined : current)
           })
         },
+        onPickUnattached: () => {
+          setPickerOpen(false)
+          void selectUnattached().catch(() => {})
+        },
         onClose: () => { setPickerOpen(false) },
       })}
       {renderSlot('conversation.hero.agentPreset', {})}
     </div>
   )
 
-  // The placeholder chip ("Choose workspace") and the Workspace-trigger input travel
-  // together: no workspace picked yet (cold start, no session at all), or a
-  // blank session whose workspace vanished (deleted from the sidebar). The
-  // bar is ONE session-maybe slot rendered unconditionally — inert is a prop,
-  // not a different tree, so the textarea DOM survives the transition.
-  const inert = sessionId === undefined || (hero && chipTitle === undefined)
+  // The composer is inert only while no session exists at all (cold start,
+  // before any New Session lands). A blank session — workspace-backed or not —
+  // keeps its machine live so a conversation can start without picking a
+  // directory first; the "Choose workspace" chip stays available as an
+  // optional attach action. The bar is ONE session-maybe slot rendered
+  // unconditionally — inert is a prop, not a different tree, so the textarea
+  // DOM survives the transition.
+  const inert = sessionId === undefined
   // A raised block is the same inert posture with the blocker's own reason:
-  // one disabled textarea, never a second tree. The no-workspace state wins
-  // when both hold — picking a workspace is the earlier prerequisite.
+  // one disabled textarea, never a second tree. The no-session state wins when
+  // both hold — a session is the earlier prerequisite.
   const blocked = !inert && composerBlock !== undefined
   const inputBar = renderSlot('conversation.composer.bar', {
     variant: hero ? 'hero' : 'composer',
@@ -183,12 +189,44 @@ export function ConversationRoot({
     </div>
   )
 
+  // When the bottom panel seat first gains height (a surface opened), pin the
+  // transcript to the floor: the scrollport shrank, so without the jump the
+  // newest content sits below the fold behind the new panel.
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const panelSeatRef = useRef<HTMLDivElement | null>(null)
+  const panelOpenRef = useRef(false)
+  useEffect(() => {
+    const seat = panelSeatRef.current
+    const scroller = scrollRef.current
+    /* v8 ignore next -- refs attach on the unconditional render below. */
+    if (seat === null || scroller === null) return
+    const observer = new ResizeObserver(() => {
+      const open = seat.clientHeight > 0
+      if (open && !panelOpenRef.current) {
+        scroller.scrollTop = scroller.scrollHeight
+      }
+      panelOpenRef.current = open
+    })
+    observer.observe(seat)
+    return () => { observer.disconnect() }
+  }, [])
+
   return (
     <div className={css.root} data-phase={phase}>
-      {renderSlot('conversation.session.header', {})}
-      <div className={css.scrollBody} data-conversation-scroll="">
-        {renderSlot('conversation.session', {})}
-        {composerSeat}
+      <div className={css.columns}>
+        <div className={css.mainColumn}>
+          {renderSlot('conversation.session.header', {})}
+          <div ref={scrollRef} className={css.scrollBody} data-conversation-scroll="">
+            {renderSlot('conversation.session', {})}
+            {composerSeat}
+          </div>
+          <div ref={panelSeatRef} className={css.panelSeat}>
+            {renderSlot('conversation.panel', {})}
+          </div>
+        </div>
+        <div className={css.sideColumn}>
+          {renderSlot('conversation.side', {})}
+        </div>
       </div>
     </div>
   )
