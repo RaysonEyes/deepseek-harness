@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 // Side-effect type import: loads the locale-namespace augmentation from the
 // package registration into this program (same pattern as the browser-plugin tests).
 import type {} from '../src/client/index.ts'
 import type {
   GitReviewStatusValue, IApiClient,
 } from '@deepseek-ai/dsh-client-connection/client'
-import { PanelDock, type PanelDockProps } from '../src/client/PanelDock.tsx'
+import { PanelDock, PanelHost, PanelSide, type PanelDockProps, type PanelHostProps, type PanelSideProps } from '../src/client/PanelDock.tsx'
+import { createPanelsStore } from '../src/client/stores.ts'
 import { en, type PanelsLocaleKey } from '../src/client/locales.ts'
 
 afterEach(cleanup)
@@ -45,18 +47,27 @@ function apiMock(overrides: Partial<IApiClient> = {}): IApiClient {
   } as unknown as IApiClient
 }
 
-function props(api: IApiClient): PanelDockProps {
-  return {
-    t,
-    sessionId: 's1',
-    useSessions,
-    api,
-  } as unknown as PanelDockProps
+// Render the dock and the bottom host over one shared store instance: the
+// framework caches one instance per handle × session, so this mirrors the
+// production wiring (a header tab click opens the surface in the host).
+function renderPanels(api: IApiClient, sessionId = 's1', sessions: PanelDockProps['useSessions'] = useSessions): void {
+  const panels = createPanelsStore().create()
+  const store = { useStore: bindSnapshotSelector(panels), actions: panels.actions }
+  const shared = { t, api, sessionId, useSessions: sessions }
+  // The components only read the subset above; the remaining session-kit
+  // members stay unprovided and are cast away (same pattern as the old props()).
+  render(
+    <>
+      <PanelDock {...({ ...shared, ...store } as unknown as PanelDockProps)} />
+      <PanelHost {...({ ...shared, ...store } as unknown as PanelHostProps)} />
+      <PanelSide {...({ ...shared, ...store } as unknown as PanelSideProps)} />
+    </>,
+  )
 }
 
 describe('PanelDock', () => {
   it('renders the five panel tabs in the dock', () => {
-    render(<PanelDock {...props(apiMock())} />)
+    renderPanels(apiMock())
     for (const label of [en.tabTerminal, en.tabBrowser, en.tabReview, en.tabAssistant, en.tabFiles]) {
       expect(screen.getByRole('button', { name: label })).toBeTruthy()
     }
@@ -64,7 +75,7 @@ describe('PanelDock', () => {
 
   it('opens the review panel with the Git change groups and a diff on selection', async () => {
     const api = apiMock()
-    render(<PanelDock {...props(api)} />)
+    renderPanels(api)
     fireEvent.click(screen.getByRole('button', { name: en.tabReview }))
     expect(await screen.findByRole('region', { name: en.panelReview })).toBeTruthy()
     expect(api.git.status).toHaveBeenCalledWith({ cwd: CWD })
@@ -82,36 +93,42 @@ describe('PanelDock', () => {
         diff: vi.fn(),
       } as unknown as IApiClient['git'],
     })
-    render(<PanelDock {...props(api)} />)
+    renderPanels(api)
     fireEvent.click(screen.getByRole('button', { name: en.tabReview }))
     expect(await screen.findByText(en.reviewNotRepo)).toBeTruthy()
   })
 
   it('opens the files panel over the workspace directory listing', async () => {
     const api = apiMock()
-    render(<PanelDock {...props(api)} />)
+    renderPanels(api)
     fireEvent.click(screen.getByRole('button', { name: en.tabFiles }))
     expect(await screen.findByRole('region', { name: en.panelFiles })).toBeTruthy()
     expect(api.workspace.listDirectory).toHaveBeenCalledWith({ path: CWD })
     expect(screen.getByText('src')).toBeTruthy()
   })
 
-  it('shows the placeholder for the terminal tab and toggles the panel closed', async () => {
-    render(<PanelDock {...props(apiMock())} />)
-    fireEvent.click(screen.getByRole('button', { name: en.tabTerminal }))
-    expect(await screen.findByRole('region', { name: en.panelTerminal })).toBeTruthy()
+  it('shows the placeholder for the assistant tab and toggles the panel closed', async () => {
+    renderPanels(apiMock())
+    fireEvent.click(screen.getByRole('button', { name: en.tabAssistant }))
+    expect(await screen.findByRole('region', { name: en.panelAssistant })).toBeTruthy()
     expect(screen.getByText(en.comingSoon)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: en.tabTerminal }))
-    await waitFor(() => { expect(screen.queryByRole('region', { name: en.panelTerminal })).toBeNull() })
+    fireEvent.click(screen.getByRole('button', { name: en.tabAssistant }))
+    await waitFor(() => { expect(screen.queryByRole('region', { name: en.panelAssistant })).toBeNull() })
   })
 
-  it('renders nothing when no session cwd is available', () => {
+  it('opens the browser panel with the start hint', async () => {
+    renderPanels(apiMock())
+    fireEvent.click(screen.getByRole('button', { name: en.tabBrowser }))
+    expect(await screen.findByRole('region', { name: en.panelBrowser })).toBeTruthy()
+    expect(screen.getByText(en.browserEmpty)).toBeTruthy()
+  })
+
+  it('renders no host panel when no session cwd is available', () => {
     const noCwd = ((selector: (s: unknown) => unknown): unknown => selector({
       current: 's2',
       byId: { s2: { cwd: undefined } },
     })) as PanelDockProps['useSessions']
-    const noCwdProps = { t, sessionId: 's2', useSessions: noCwd, api: apiMock() } as unknown as PanelDockProps
-    render(<PanelDock {...noCwdProps} />)
+    renderPanels(apiMock(), 's2', noCwd)
     fireEvent.click(screen.getByRole('button', { name: en.tabReview }))
     expect(screen.queryByRole('region', { name: en.panelReview })).toBeNull()
   })

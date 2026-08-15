@@ -1,6 +1,6 @@
 // Workspace directory browser panel: lists directories and files through the
-// always-available `workspace.listDirectory` host capability (native picker
-// deployments do not serve the browse picker's `host.listDirectory`).
+// always-available `workspace.listDirectory` host capability. Directories
+// navigate; files read their content through `workspace.readFile`.
 
 import { useCallback, useEffect, useState } from 'react'
 import type { IApiClient, WorkspaceDirectoryListing } from '@deepseek-ai/dsh-client-connection/client'
@@ -24,9 +24,18 @@ type ListView =
   | { readonly status: 'error' }
   | { readonly status: 'ready'; readonly listing: WorkspaceDirectoryListing }
 
+/** One opened file's content, or an error while reading it. */
+type FileView =
+  | { readonly status: 'loading' }
+  | { readonly status: 'error' }
+  | { readonly status: 'ready'; readonly path: string; readonly content: string }
+
 export function FilesPanel({ api, cwd, t }: FilesPanelProps) {
   const [stack, setStack] = useState<StackEntry[]>([{ path: cwd, name: t('filesRoot') }])
   const [view, setView] = useState<ListView>({ status: 'loading' })
+  const [file, setFile] = useState<FileView | null>(null)
+
+  const current = stack[stack.length - 1]?.path ?? cwd
 
   const load = useCallback(async (target: string): Promise<void> => {
     setView({ status: 'loading' })
@@ -42,22 +51,36 @@ export function FilesPanel({ api, cwd, t }: FilesPanelProps) {
     }
   }, [api])
 
-  useEffect(() => { void load(stack[0]?.path ?? cwd) }, [cwd, load, stack])
+  useEffect(() => { void load(current) }, [current, load])
 
-  const open = useCallback((path: string, name: string): void => {
-    setStack(current => [...current, { path, name }])
+  const openDirectory = useCallback((path: string, name: string): void => {
+    setFile(null)
+    setStack(prev => [...prev, { path, name }])
   }, [])
 
+  const openFile = useCallback(async (path: string): Promise<void> => {
+    setFile({ status: 'loading' })
+    try {
+      const response = await api.workspace.readFile({ path })
+      if (!response.result.ok) {
+        setFile({ status: 'error' })
+        return
+      }
+      setFile({ status: 'ready', path: response.result.value.path, content: response.result.value.content })
+    } catch {
+      setFile({ status: 'error' })
+    }
+  }, [api])
+
   const up = useCallback((): void => {
-    setStack(current => current.length > 1 ? current.slice(0, -1) : current)
+    setFile(null)
+    setStack(prev => prev.length > 1 ? prev.slice(0, -1) : prev)
   }, [])
 
   const pop = useCallback((index: number): void => {
-    setStack(current => current.slice(0, index + 1))
+    setFile(null)
+    setStack(prev => prev.slice(0, index + 1))
   }, [])
-
-  if (view.status === 'loading') return <p className={css.panelStatus}>{t('filesLoading')}</p>
-  if (view.status === 'error') return <p className={css.panelError}>{t('filesFailed')}</p>
 
   return (
     <div className={css.files}>
@@ -77,23 +100,42 @@ export function FilesPanel({ api, cwd, t }: FilesPanelProps) {
           </button>
         ))}
       </nav>
-      <ul className={css.fileList}>
-        {view.listing.entries.map(entry => (
-          <li key={entry.path}>
-            <button
-              type="button"
-              className={css.fileRow}
-              data-kind={entry.kind}
-              disabled={entry.kind !== 'directory'}
-              onClick={() => { if (entry.kind === 'directory') open(entry.path, entry.name) }}
-            >
-              <span className={css.fileIcon} aria-hidden="true">{entry.kind === 'directory' ? '▸' : '·'}</span>
-              <span className={css.changePath}>{entry.name}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {view.listing.entries.length === 0 && <p className={css.panelStatus}>{t('filesEmpty')}</p>}
+
+      {file === null ? (
+        <>
+          {view.status === 'loading' && <p className={css.panelStatus}>{t('filesLoading')}</p>}
+          {view.status === 'error' && <p className={css.panelError}>{t('filesFailed')}</p>}
+          {view.status === 'ready' && (
+            <ul className={css.fileList}>
+              {view.listing.entries.map(entry => (
+                <li key={entry.path}>
+                  <button
+                    type="button"
+                    className={css.fileRow}
+                    data-kind={entry.kind}
+                    onClick={() => {
+                      if (entry.kind === 'directory') openDirectory(entry.path, entry.name)
+                      else void openFile(entry.path)
+                    }}
+                  >
+                    <span className={css.fileIcon} aria-hidden="true">{entry.kind === 'directory' ? '▸' : '·'}</span>
+                    <span className={css.changePath}>{entry.name}</span>
+                  </button>
+                </li>
+              ))}
+              {view.listing.entries.length === 0 && <p className={css.panelStatus}>{t('filesEmpty')}</p>}
+            </ul>
+          )}
+        </>
+      ) : (
+        <>
+          {file.status === 'loading' && <p className={css.panelStatus}>{t('filesLoading')}</p>}
+          {file.status === 'error' && <p className={css.panelError}>{t('filesFailed')}</p>}
+          {file.status === 'ready' && (
+            <pre className={css.fileContent}><code>{file.content}</code></pre>
+          )}
+        </>
+      )}
     </div>
   )
 }

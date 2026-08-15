@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-panels",
-  "description": "Top-right panel switcher: Git diff review, workspace files, and auxiliary surfaces",
+  "description": "Top-right panel switcher: embedded browser, terminal, Git diff review, and workspace files",
   "version": "0.1.0-rc.5",
   "type": "module",
   "main": "lib/index.js",
@@ -47,6 +47,8 @@
     "access": "public"
   },
   "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

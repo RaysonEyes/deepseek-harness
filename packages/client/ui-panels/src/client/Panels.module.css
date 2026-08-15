@@ -35,23 +35,103 @@
   outline-offset: -2px;
 }
 
-.overlay {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 60;
+/* Bottom panel host: sits below the conversation column (vertical split),
+   so an open terminal/diff never covers the transcript. Height is inline from
+   the panels store; the body scrolls and the top edge is the drag handle. */
+.host {
+  position: relative;
+  flex: none;
   display: flex;
   flex-direction: column;
-  width: 440px;
-  max-width: 92vw;
-  border-left: 1px solid var(--dsw-alias-border-l2);
+  min-height: 0;
+  border-top: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-2);
-  box-shadow: var(--dsw-shadow-lv2);
   color: var(--dsw-alias-label-primary);
+  /* The body below scrolls, so the thumb takes the l2 pair (see ui-theme
+     styles/scrollbar.css for the rebinding contract). */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
-.overlayHeader {
+/* Top-edge drag handle: pulling up grows the panel, pulling down shrinks it. */
+.resizeHandle {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  z-index: 1;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.resizeHandle:hover,
+.resizeHandle:active {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 28%, transparent);
+}
+
+.hostHeader {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.hostHeader strong {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.hostBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Right-side browser companion: an in-flow column beside the conversation
+   (the ui-conversation side seat reserves its width), so an open browser
+   never overlays the transcript. The iframe fills the body and scrolls
+   itself, so the host never scrolls. */
+.sidePanel {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  /* Elevated surface: rebind the indirection so any inner scroll region takes
+     the l2 pair (see ui-theme styles/scrollbar.css). */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* Left-edge drag handle: pulling left widens the panel, pulling right narrows
+   it; the conversation column reflows to the remaining width. */
+.sideResizeHandle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  z-index: 1;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.sideResizeHandle:hover,
+.sideResizeHandle:active {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 28%, transparent);
+}
+
+.sideHeader {
   display: flex;
   flex: none;
   align-items: center;
@@ -62,16 +142,16 @@
   border-bottom: 1px solid var(--dsw-alias-border-l2);
 }
 
-.overlayHeader strong {
+.sideHeader strong {
   font-size: 14px;
   line-height: 20px;
   font-weight: 600;
 }
 
-.overlayBody {
+.sideBody {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .iconButton {
@@ -84,6 +164,7 @@
   font-size: 12px;
   line-height: 18px;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .iconButton:hover {
@@ -359,4 +440,260 @@
   flex: none;
   color: var(--dsw-alias-label-tertiary);
   font-size: 10px;
+}
+
+.fileContent {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  line-height: 17px;
+  white-space: pre;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ── terminal panel ───────────────────────────────────────────── */
+
+.terminal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #0c0c0d;
+}
+
+.terminalTabs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px 0;
+  overflow-x: auto;
+}
+
+.terminalTab {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.terminalTabButton {
+  border: 0;
+  padding: 4px 10px;
+  background: transparent;
+  color: #8f949b;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.terminalTabButton[data-active='true'] {
+  border-radius: 6px 6px 0 0;
+  background: #1e1e21;
+  color: #ffffff;
+}
+
+.terminalTabClose {
+  border: 0;
+  padding: 2px 6px;
+  background: transparent;
+  color: #8f949b;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.terminalTabClose:hover {
+  color: #ffffff;
+}
+
+.terminalTabAdd {
+  border: 0;
+  padding: 4px 8px;
+  background: transparent;
+  color: #8f949b;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.terminalTabAdd:hover {
+  color: #ffffff;
+}
+
+.terminalStack {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 4px;
+}
+
+.terminalBody {
+  position: absolute;
+  inset: 4px;
+  overflow: hidden;
+}
+
+.terminalBody[hidden] {
+  display: none;
+}
+
+.terminalXterm {
+  width: 100%;
+  height: 100%;
+}
+
+.terminalXterm :global(.xterm) {
+  height: 100%;
+}
+
+/* ── browser panel ─────────────────────────────────────────────── */
+
+.browser {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.browserTabs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 6px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.browserTab {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.browserTabButton {
+  border: 0;
+  border-radius: 6px 6px 0 0;
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.browserTabButton[data-active='true'] {
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+}
+
+.browserTabClose {
+  border: 0;
+  padding: 2px 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.browserTabClose:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.browserTabAdd {
+  border: 0;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.browserTabAdd:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.browserStack {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.browserPage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.browserPage[hidden] {
+  display: none;
+}
+
+.browserToolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.browserToolbar button:disabled,
+.browserToolbar a:not([href]) {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.browserToolbar a:not([href]) {
+  pointer-events: none;
+}
+
+.browserInput {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.browserInput:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -1px;
+}
+
+.browserInput[aria-invalid='true'] {
+  border-color: var(--dsw-alias-state-error-primary);
+}
+
+.browserFrame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: #ffffff;
+}
+
+.browserEmpty {
+  margin: 16px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
 }

@@ -15,10 +15,11 @@ export const name = 'client-ui-panels-invariant'
 export const inject = ['invariants']
 
 /**
- * No runtime invariant: this package renders read-only panels over existing
- * Host surfaces (git review over the new `git` apiproxy domain, files over
- * the existing `host.listDirectory` capability) and holds no cross-plugin
- * mutable state beyond the local dock selection.
+ * No runtime invariant: this package renders read-only panels (Git review over
+ * the `git` apiproxy domain, files over `host.listDirectory`, a self-contained
+ * sandboxed iframe browser) plus a terminal over the /api/terminal WebSocket,
+ * and holds no cross-plugin mutable state beyond the local dock selection and
+ * the browser panel's process-local navigation history.
  */
 const install: InvariantInstaller = () => {}
 
