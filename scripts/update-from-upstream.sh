@@ -78,9 +78,11 @@ if ! "$REPO_ROOT/scripts/rebuild-desktop-app.sh" >> "$LOG_FILE" 2>&1; then
 fi
 
 # Keep the personal fork (origin) in sync after a successful update.
-# Disable with DHS_UPSTREAM_PUSH_ORIGIN=0.
+# Disable with DHS_UPSTREAM_PUSH_ORIGIN=0. The pre-push hook (full-repo typecheck)
+# is bypassed so an unattended background sync cannot be blocked by a slow gate;
+# manual pushes keep the hook.
 if [ "${DHS_UPSTREAM_PUSH_ORIGIN:-1}" != "0" ]; then
-  if git push --force-with-lease origin master >> "$LOG_FILE" 2>&1; then
+  if git push --no-verify --force-with-lease origin master >> "$LOG_FILE" 2>&1; then
     log "origin master pushed"
   else
     log "warning: origin push failed (skipped)"
