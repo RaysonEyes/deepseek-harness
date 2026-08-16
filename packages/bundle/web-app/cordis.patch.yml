@@ -269,11 +269,6 @@
     - id: ui-settings-plugins
       name: '@deepseek-ai/dsh-client-ui-settings-plugins'
 
-    # Top-right panel switcher: Git change review, workspace files, and the
-    # auxiliary surfaces (Terminal/Browser/Assistant arrive as their backends land).
-    - id: ui-panels
-      name: '@deepseek-ai/dsh-client-ui-panels'
-
     # Plan control: the composer plan seat over the plan projection + /plan channel.
     - id: ui-plan
       name: '@deepseek-ai/dsh-client-ui-plan'
