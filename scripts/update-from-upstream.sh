@@ -77,8 +77,9 @@ if ! "$REPO_ROOT/scripts/rebuild-desktop-app.sh" >> "$LOG_FILE" 2>&1; then
   exit 1
 fi
 
-# Optional: keep the personal fork (origin) in sync after a successful update.
-if [ "${DHS_UPSTREAM_PUSH_ORIGIN:-0}" = "1" ]; then
+# Keep the personal fork (origin) in sync after a successful update.
+# Disable with DHS_UPSTREAM_PUSH_ORIGIN=0.
+if [ "${DHS_UPSTREAM_PUSH_ORIGIN:-1}" != "0" ]; then
   if git push --force-with-lease origin master >> "$LOG_FILE" 2>&1; then
     log "origin master pushed"
   else
