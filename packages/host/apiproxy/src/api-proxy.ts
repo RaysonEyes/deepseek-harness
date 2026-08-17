@@ -199,11 +199,15 @@ async function durablePromptContent(ctx: Context, content: readonly PromptConten
       })
     }
   }
-  const refs = await ctx.attachments.saveImages(binary.filter(item => item.part.type === 'image').map(item => ({
-    data: item.data,
-    mediaType: item.part.mediaType,
-    ...(item.part.name === undefined ? {} : { name: item.part.name }),
-  })))
+  const refs = await ctx.attachments.saveImages(binary.flatMap(item =>
+    item.part.type === 'image'
+      ? [{
+        data: item.data,
+        mediaType: item.part.mediaType,
+        ...(item.part.name === undefined ? {} : { name: item.part.name }),
+      }]
+      : [],
+  ))
   const blocks: ContentBlock[] = []
   let imageIndex = 0
   for (const item of prepared) {
