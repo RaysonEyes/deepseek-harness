@@ -381,9 +381,10 @@ export class SkillRegistry extends Service {
    * Register a borrowed same-process provider synchronously during plugin
    * apply, into the calling context's layer: a scoped context (an agent
    * preset's standing mount) registers for that scope alone, an unscoped
-   * context registers globally. Duplicate names within one layer and reserved
-   * names throw; remote initialization belongs in `list()`. Fiber disposal
-   * unregisters the provider and invalidates catalog caches.
+   * context registers globally. The provider must carry a non-empty string
+   * `name`; duplicate names within one layer, reserved names, and missing or
+   * non-string `name` fields throw; remote initialization belongs in `list()`.
+   * Fiber disposal unregisters the provider and invalidates catalog caches.
    * @param create - synchronous factory receiving this registration's lifecycle and invalidation control.
    * @returns the exact Cordis effect disposer that unregisters this provider;
    *   composite effects may yield it directly to preserve teardown ordering.
@@ -404,6 +405,9 @@ export class SkillRegistry extends Service {
     try {
       provider = create(control)
       const name = provider.name
+      if (typeof name !== 'string' || name.length === 0) {
+        throw new TypeError('skill provider must have a non-empty string \'name\' field')
+      }
       if (name === RUNTIME_PROVIDER) {
         throw new Error(`"${RUNTIME_PROVIDER}" is reserved for runtime skill registrations`)
       }

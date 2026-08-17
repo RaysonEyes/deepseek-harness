@@ -141,6 +141,25 @@ describe('SkillRegistry registry', () => {
     })).toThrow(factoryFailure)
     expect(failedSignal?.reason).toBe(factoryFailure)
 
+    const badNameCases: { name: unknown; label: string }[] = [
+      { name: undefined, label: 'undefined' },
+      { name: '', label: 'empty' },
+      { name: 42, label: 'number' },
+      { name: { value: 'x' }, label: 'object' },
+    ]
+    for (const { name: badName, label } of badNameCases) {
+      let abortedSignal: AbortSignal | undefined
+      expect(() => ctx.skills.registerProvider((control) => {
+        abortedSignal = control.signal
+        return {
+          name: badName as unknown as string,
+          list: () => Promise.resolve([]),
+          get: () => Promise.resolve(undefined),
+        }
+      })).toThrow('non-empty string \'name\' field')
+      expect(abortedSignal?.aborted, label).toBe(true)
+    }
+
     const effectContext = new Context()
     const effectService = new SkillRegistry(effectContext)
     const effectFailure = new Error('effect registration failed')
